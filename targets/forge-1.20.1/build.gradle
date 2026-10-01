@@ -1,0 +1,5 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev.legacyforge' version '2.0.91'
+}
+apply from: '../../gradle/forge.gradle'

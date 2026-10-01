@@ -1,0 +1,13 @@
+apply from: '../../gradle/common.gradle'
+
+legacyForge {
+    version = "${minecraft_version}-${loader_version}"
+    mods {
+        xaeroearth { sourceSet(sourceSets.main) }
+    }
+}
+
+dependencies {
+    // Xaero requires the :dev classifier with Mojang mappings before 1.21.1.
+    implementation "xaero.map:xaeroworldmap-forge-${xaero_mc_version}:${xaero_version}:dev"
+}

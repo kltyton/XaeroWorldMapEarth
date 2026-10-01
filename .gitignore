@@ -1,0 +1,15 @@
+.gradle/
+build/
+run/
+**/.gradle/
+**/build/
+**/run/
+**/bin/
+.idea/
+*.iml
+.project
+.classpath
+.settings/
+/README.md
+/AGENTS.md
+/NEXT_AGENT.md

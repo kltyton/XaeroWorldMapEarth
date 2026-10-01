@@ -1,0 +1,56 @@
+group = 'io.github.kltyton.xaeroearth'
+version = '0.1.0'
+
+base {
+    archivesName = project.name
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(Integer.parseInt(java_version))
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        name = 'Xaero'
+        url = 'https://chocolateminecraft.com/maven'
+        content {
+            includeGroup 'xaero.map'
+            includeGroup 'xaero.lib'
+        }
+    }
+}
+
+// AUI has no complete 1.2.5.4 Maven publication for this nine-target matrix.
+// Pass -PauiJar=<matching local target JAR> when code starts using its API.
+if (project.hasProperty('auiJar')) {
+    def localAuiJar = file(project.property('auiJar'))
+    if (!localAuiJar.isFile()) {
+        throw new GradleException("AUI JAR does not exist: ${localAuiJar}")
+    }
+    dependencies {
+        compileOnly files(localAuiJar)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = Integer.parseInt(java_version)
+}
+
+tasks.withType(Jar).configureEach {
+    from(file('../../LICENSE')) {
+        into 'META-INF'
+    }
+}
+
+tasks.named('processResources', ProcessResources).configure {
+    def props = [mod_version: project.version, minecraft_version: minecraft_version,
+                 java_version: java_version, loader_version: loader_version,
+                 minecraft_version_range: minecraft_version_range,
+                 loader_version_range: loader_version_range]
+    inputs.properties(props)
+    filesMatching(['fabric.mod.json', 'META-INF/mods.toml', 'META-INF/neoforge.mods.toml']) {
+        expand(props)
+    }
+}
