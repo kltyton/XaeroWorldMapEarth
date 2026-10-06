@@ -8,3 +8,38 @@ buildscript {
 }
 apply plugin: 'fabric-loom'
 apply from: '../../gradle/fabric.gradle'
+
+if (!project.hasProperty('auiJar')) {
+    throw new GradleException('This target requires -PauiJar=<matching remapped Fabric AUI JAR with the chunkmap API>')
+}
+def localAuiJar = file(project.property('auiJar'))
+def auiVersion
+new java.util.jar.JarFile(localAuiJar).withCloseable { archive ->
+    archive.getInputStream(archive.getEntry('fabric.mod.json')).withCloseable { metadata ->
+        auiVersion = new groovy.json.JsonSlurper().parse(metadata).version.toString()
+    }
+    [
+        'com/sighs/apricityui/chunkmap/AuiNativeTerrainRenderer.class',
+        'com/sighs/apricityui/chunkmap/AuiNativeTileSession.class',
+        'com/sighs/apricityui/chunkmap/AuiMapCamera.class',
+        'com/sighs/apricityui/chunkmap/AuiActiveMapResources.class',
+        'com/sighs/apricityui/chunkmap/AuiChunkTiles.class',
+        'assets/apricityui/apricity/apricityui/runtime/mcui/mcui-oreui.aui.js',
+        'fabric.mod.json'
+    ].each { entry ->
+        if (archive.getEntry(entry) == null) throw new GradleException("The AUI JAR lacks the required Fabric map/component API: ${entry}")
+    }
+}
+loom {
+    mixin { defaultRefmapName = 'xaeroearth.refmap.json' }
+}
+repositories {
+    maven { url = 'https://maven.latvian.dev/releases' }
+    flatDir { dirs localAuiJar.parentFile }
+}
+dependencies {
+    modImplementation 'net.fabricmc.fabric-api:fabric-api:0.116.15+1.21.1'
+    modRuntimeOnly files(localAuiJar)
+    include(group: 'com.sighs', name: localAuiJar.name - '.jar', version: auiVersion)
+    include modImplementation('dev.latvian.mods:rhino:2101.2.7-build.82')
+}

@@ -3,3 +3,44 @@ plugins {
     id 'net.neoforged.moddev' version '2.0.147'
 }
 apply from: '../../gradle/neoforge.gradle'
+
+if (!project.hasProperty('auiJar')) {
+    throw new GradleException('This target requires -PauiJar=<matching AUI JAR with the chunkmap API>')
+}
+def localAuiJar = file(project.property('auiJar'))
+def requiredAuiEntries = [
+    'com/sighs/apricityui/chunkmap/AuiNativeTerrainRenderer.class',
+    'com/sighs/apricityui/chunkmap/AuiNativeTileSession.class',
+    'com/sighs/apricityui/chunkmap/AuiMapCamera.class',
+    'com/sighs/apricityui/chunkmap/AuiActiveMapResources.class',
+    'com/sighs/apricityui/chunkmap/AuiChunkTiles.class',
+    'assets/apricityui/apricity/apricityui/runtime/mcui/mcui-oreui.aui.js'
+]
+new java.util.jar.JarFile(localAuiJar).withCloseable { archive ->
+    requiredAuiEntries.each { entry ->
+        if (archive.getEntry(entry) == null) throw new GradleException("The AUI JAR lacks the required map/component API: ${entry}")
+    }
+    if (!archive.manifest?.mainAttributes?.getValue('Automatic-Module-Name')
+            && archive.getEntry('module-info.class') == null) {
+        throw new GradleException('The AUI JAR must declare Automatic-Module-Name or module-info.class for local jar-in-jar packaging')
+    }
+}
+dependencies {
+    runtimeOnly files(localAuiJar)
+    jarJar files(localAuiJar)
+    jarJar(implementation('dev.latvian.mods:rhino:2101.2.7-build.82')) {
+        version { strictly '[2101.2.7-build.82]'; prefer '2101.2.7-build.82' }
+    }
+}
+repositories {
+    maven { url = 'https://maven.latvian.dev/releases' }
+}
+neoForge {
+    runs {
+        client {
+            client()
+            gameDirectory = project.hasProperty('earthRunDirectory')
+                    ? file(project.property('earthRunDirectory')) : file('run')
+        }
+    }
+}

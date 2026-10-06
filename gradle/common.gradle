@@ -28,9 +28,6 @@ if (project.hasProperty('auiJar')) {
     if (!localAuiJar.isFile()) {
         throw new GradleException("AUI JAR does not exist: ${localAuiJar}")
     }
-    dependencies {
-        compileOnly files(localAuiJar)
-    }
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -41,6 +38,9 @@ tasks.withType(JavaCompile).configureEach {
 tasks.withType(Jar).configureEach {
     from(file('../../LICENSE')) {
         into 'META-INF'
+    }
+    from(file('../../licenses')) {
+        into 'META-INF/licenses'
     }
 }
 

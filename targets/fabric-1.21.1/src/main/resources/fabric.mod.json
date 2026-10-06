@@ -3,7 +3,10 @@
   "id": "xaeroearth",
   "version": "${mod_version}",
   "name": "Xaero's World Map: Earth",
-  "description": "AUI and 3D map addon for Xaero's World Map",
+  "description": "Native 3D terrain views and an Ore-style interface for Xaero's World Map.",
+  "authors": ["kltyton"],
+  "contact": {"sources": "https://github.com/kltyton/XaeroWorldMapEarth"},
+  "icon": "assets/xaeroearth/branding/icon.png",
   "license": "MIT",
   "environment": "client",
   "entrypoints": {
@@ -15,7 +18,16 @@
     "fabricloader": ">=${loader_version}",
     "minecraft": "1.21.1",
     "java": ">=${java_version}",
-    "xaeroworldmap": ">=1.46.0",
-    "apricityui": ">=1.2.5.4"
-  }
+    "xaeroworldmap": ">=1.46.0 <1.46.1",
+    "apricityui": ">=1.2.5.4 <1.2.5.5",
+    "xaerolib": ">=1.7.3 <1.7.4",
+    "rhino": "2101.2.7-build.82",
+    "fabric-api": ">=0.116.15+1.21.1"
+  },
+  "suggests": {
+    "xaerominimap": ">=26.4.0"
+  },
+  "mixins": [
+    "xaeroearth.mixins.json"
+  ]
 }

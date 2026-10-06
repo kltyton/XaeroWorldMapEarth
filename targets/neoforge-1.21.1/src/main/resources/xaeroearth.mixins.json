@@ -1,0 +1,25 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "io.github.kltyton.xaeroearth.client.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "GuiMapAccess",
+    "GuiMapMixin",
+    "GuiTexturedButtonMixin",
+    "AbstractSliderButtonAccess",
+    "AbstractSliderButtonMixin",
+    "GuiMapEntityIndicatorMixin",
+    "TrackedPlayerEntityIndicatorMixin",
+    "MinimapRadarEntityMixin",
+    "XaeroTooltipLayerMixin",
+    "ClientChunkMutationMixin",
+    "DropdownSkinMixin",
+    "MapElementProjectionMixin",
+    "MapEntityNameMixin",
+    "MapEntityLeashMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

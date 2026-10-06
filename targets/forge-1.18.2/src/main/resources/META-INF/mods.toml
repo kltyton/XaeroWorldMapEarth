@@ -6,7 +6,10 @@ license="MIT"
 modId="xaeroearth"
 version="${mod_version}"
 displayName="Xaero's World Map: Earth"
-description="AUI and 3D map addon for Xaero's World Map"
+description="Native 3D terrain views and an Ore-style interface for Xaero's World Map."
+authors="kltyton"
+displayURL="https://github.com/kltyton/XaeroWorldMapEarth"
+logoFile="assets/xaeroearth/branding/icon.png"
 clientRequired=true
 
 [[dependencies.xaeroearth]]
@@ -26,13 +29,34 @@ side="BOTH"
 [[dependencies.xaeroearth]]
 modId="xaeroworldmap"
 mandatory=true
-versionRange="[1.46.0,)"
+versionRange="[1.46.0,1.46.1)"
 ordering="AFTER"
 side="CLIENT"
 
 [[dependencies.xaeroearth]]
 modId="apricityui"
 mandatory=true
-versionRange="[1.2.5.4,)"
+versionRange="[1.2.5.4,1.2.5.5)"
+ordering="AFTER"
+side="CLIENT"
+
+[[dependencies.xaeroearth]]
+modId="xaerolib"
+mandatory=true
+versionRange="[1.7.3,1.7.4)"
+ordering="AFTER"
+side="CLIENT"
+
+[[dependencies.xaeroearth]]
+modId="rhino"
+mandatory=true
+versionRange="[1802.2.1-build.255]"
+ordering="AFTER"
+side="CLIENT"
+
+[[dependencies.xaeroearth]]
+modId="xaerominimap"
+mandatory=false
+versionRange="[26.4.0,)"
 ordering="AFTER"
 side="CLIENT"

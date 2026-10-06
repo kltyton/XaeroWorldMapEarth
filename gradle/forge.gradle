@@ -10,4 +10,5 @@ legacyForge {
 dependencies {
     // Xaero requires the :dev classifier with Mojang mappings before 1.21.1.
     implementation "xaero.map:xaeroworldmap-forge-${xaero_mc_version}:${xaero_version}:dev"
+    if (project.hasProperty('auiJar')) compileOnly files(file(project.property('auiJar')))
 }
