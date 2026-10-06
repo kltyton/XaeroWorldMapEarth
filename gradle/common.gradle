@@ -21,8 +21,7 @@ repositories {
     }
 }
 
-// AUI has no complete 1.2.5.4 Maven publication for this nine-target matrix.
-// Pass -PauiJar=<matching local target JAR> when code starts using its API.
+// Supply the matching local AUI target JAR containing the native map API.
 if (project.hasProperty('auiJar')) {
     def localAuiJar = file(project.property('auiJar'))
     if (!localAuiJar.isFile()) {

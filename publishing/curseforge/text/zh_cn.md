@@ -1,26 +1,27 @@
-# Xaero's World Map: Earth
+# Xaero 的世界地图：地球
 
-**一句话描述：** 为 Xaero 世界地图加入原生三维地形、三种可切换视角与 Ore 风格界面。
+**一句话描述：** 把 Xaero 世界地图变成立体地形，配上等轴、俯视、街景三种视角和 Ore 风格界面。
 
-## 简介
+## 从平面地图到立体世界
 
-Xaero's World Map: Earth 是 Xaero 世界地图的客户端附属模组。它将你已探索的地图呈现为立体地形，让山坡、建筑和地表高差更容易观察，同时为地图按钮、设置页和滑块提供 Ore 风格界面。
+山坡有了高度，河谷有了纵深，建筑也能从侧面看。Earth 为 Xaero 世界地图加入三维地形和全套 Ore 风格控件，让同一张地图有三种看法。
 
-你仍然使用 Xaero 的地图、路径点和右键菜单。可以在等轴、俯视和街景三种视角之间切换；关闭 Earth 主题后即可回到原地图界面。已有地图与路径点继续由 Xaero 管理。
+等轴视角适合看地形全貌；俯视视角方便找位置、整理路径点；街景视角让你移动地图相机，近距离观察地形和建筑。地图按钮、设置页、下拉菜单与滑块都换上统一的 Ore 风格，原有地图按键、路径点和右键操作继续使用。
 
-## 具体功能
+## 地形与标记
 
-- **三种地图视角：** 等轴视角用于观察整体地形，俯视视角用于定位，街景视角可以在地图中移动相机、从侧面查看地形与建筑。
-- **原生三维地形：** 可取得区块模型的区域使用 Minecraft 方块模型与当前资源包的材质。远处只有 Xaero 颜色和高度记录的区域显示粗略地形，模型可用后再补上细节。
-- **Ore 风格界面：** 地图按钮、设置页、下拉菜单和滑块采用统一样式，保留原控件的功能与操作入口。
-- **玩家与实体：** 玩家位置使用当前皮肤的头部模型，头部指示器保持明亮可见。安装匹配版本的 Xaero 小地图后，可将原雷达允许显示、且客户端实际加载的实体加入三维模型层；仍遵守 Xaero 的筛选与服务器权限。
-- **沿用 Xaero 数据：** 已探索范围、世界、维度和洞穴层继续由 Xaero 决定。Earth 不修改世界生成，也不会将未知区域自动变成已探索地图。
+- **原生方块模型与材质。** 可读取区块的区域展示 Minecraft 方块模型和当前资源包材质；远处则用 Xaero 记录的颜色与高度铺成立体地形，区块模型就绪后补上细节。
+- **立体玩家头像。** 玩家位置使用当前皮肤的头部模型，洞穴里也保持明亮。
+- **小地图实体联动。** 共装 Xaero's Minimap 后，雷达中已加载的实体可以加入地图模型层，筛选条件和服务器权限沿用 Xaero 设置。
+- **沿用现有地图。** 探索范围、世界、维度、洞穴层和路径点由 Xaero 管理。通过配置关闭 Earth 主题，即可切回原地图界面。
 
 ## 安装
 
-仅安装在客户端。请选择与你的 Minecraft 和加载器完全一致的 Earth 文件，并安装匹配版本的 **Xaero's World Map** 与 **XaeroLib（Xlib）**。Fabric 还需要 Fabric API。发行包已内置匹配的 ApricityUI（AUI）与 Rhino，无需另装 KubeJS。Xaero's Minimap 是可选项，用于实体雷达联动。
+安装在客户端，选择对应 Minecraft 版本和加载器的 Earth 文件，再安装 **Xaero's World Map** 与 **XaeroLib（Xlib）**。Fabric 同时安装 Fabric API。
 
-| Minecraft | 可用加载器 | Java |
+Earth 发行包内置匹配的 **ApricityUI（AUI）1.2.7** 与 **Rhino**。**Xaero's Minimap** 是可选联动模组，用于地图中的实体模型。
+
+| Minecraft | 加载器 | Java |
 | --- | --- | --- |
 | 1.18.2 | Forge | 17 |
 | 1.19.2 | Forge | 17 |
@@ -29,20 +30,16 @@ Xaero's World Map: Earth 是 Xaero 世界地图的客户端附属模组。它将
 | 26.1.2 | NeoForge、Fabric | 25 |
 | 26.2 | NeoForge | 25 |
 
-不同版本和加载器的文件不能混用。各文件声明了对应 Xaero 与 Xlib 的版本范围，请按所选文件的依赖安装。
+Xaero 与 Xlib 的版本范围随对应发行文件声明，按文件依赖安装即可。
 
-## 基本操作
+## 操作
 
-使用 Xaero 的地图按键打开地图。在等轴视角中按住鼠标中键旋转；街景中按住左键或中键调整视角，用 WASD 平移、Space 上升、Shift 下降。菜单、输入框和控件优先接收操作。
+使用 Xaero 的地图按键开图。等轴视角按住鼠标中键旋转；街景视角按住左键或中键转动相机，WASD 平移，Space 上升，Shift 下降。
 
-配置中的 `enabled` 控制 Earth 主题，`view` 可选择 `ISOMETRIC`、`TOP` 或 `STREET`，`modelIndicators` 控制实际实体模型。Forge／NeoForge 使用 `config/xaeroearth-client.toml`，Fabric 使用 `config/xaeroearth-client.properties`。直接修改 Fabric 配置文件后需重启客户端。
+配置项 `enabled` 控制 Earth 主题，`view` 选择 `ISOMETRIC`、`TOP` 或 `STREET`，`modelIndicators` 控制实体模型。Forge／NeoForge 配置位于 `config/xaeroearth-client.toml`，Fabric 位于 `config/xaeroearth-client.properties`。修改 Fabric 配置文件后重启客户端生效。
 
-## 当前限制与反馈
+## 反馈与致谢
 
-精细地形取决于可取得的区块模型；只有颜色与高度记录的远处区域不包含完整建筑细节。首次打开地图仍可能有明显停顿，当前不承诺固定的帧率提升或消除首开卡顿。其他 Xaero 附属、特殊实体渲染和整合包组合需要分别验证。
+在 [GitHub Issues](https://github.com/kltyton/XaeroWorldMapEarth/issues) 提交版本信息、复现步骤、日志和截图。
 
-遇到问题，请到 [GitHub Issues](https://github.com/kltyton/XaeroWorldMapEarth/issues) 提供 Minecraft、加载器、Earth、Xaero、Xlib 的版本、复现步骤和 `latest.log`；涉及显示问题时附上截图及所用资源包。
-
-## 致谢与许可
-
-本项目由 kltyton 开发，代码采用 MIT 许可。感谢 Xaero's World Map、[ApricityUI](https://github.com/Tower-of-Sighs/AUI) 与 mcui-oreui 的作者及贡献者。AUI 使用 LGPL-2.1，Rhino 使用 MPL-2.0，其余随包库保留各自许可；详见[第三方声明](https://github.com/kltyton/XaeroWorldMapEarth/blob/main/licenses/NOTICE.md)。
+由 kltyton 开发，项目代码采用 MIT 许可。感谢 Xaero's World Map、[ApricityUI](https://github.com/Tower-of-Sighs/AUI) 与 mcui-oreui 的作者及贡献者。AUI 使用 LGPL-2.1，Rhino 使用 MPL-2.0；[第三方声明](https://github.com/kltyton/XaeroWorldMapEarth/blob/main/licenses/NOTICE.md)列明随包库的许可与源码。

@@ -5,12 +5,12 @@ license does not replace the licenses of bundled libraries or external mods.
 
 ## ApricityUI (AUI)
 
-Release files bundle a modified ApricityUI 1.2.5.4 library. ApricityUI is by
+Release files bundle a modified ApricityUI 1.2.7 library. ApricityUI is by
 Tower of Sighs and its contributors and is licensed under LGPL-2.1. The license
 text is in `aui/LGPL-2.1.txt` beside this notice, and the complete corresponding
 source and build materials for the bundled nine-target library are available at:
 
-https://github.com/kltyton/AUI/tree/dev/earth-source-1.2.5.4
+https://github.com/kltyton/AUI/tree/bda94fe30072b610dd71713935d2d939c817bc89
 
 Upstream: https://github.com/Tower-of-Sighs/AUI
 
