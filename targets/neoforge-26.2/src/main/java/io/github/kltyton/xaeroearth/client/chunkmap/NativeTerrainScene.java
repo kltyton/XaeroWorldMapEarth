@@ -126,6 +126,7 @@ public final class NativeTerrainScene implements AutoCloseable {
             draws.add(new AuiNativeTerrainRenderer.Draw(placed.mesh, transform, placed.mask, brightness));
         }
         frameCamera = camera; frameTarget = target; frameDraws = List.copyOf(draws);
+        updateCoverage(camera, source, masks);
         surfaceRenderer.update(surface);
         boolean surfaceDrawn = surface != null && surfaceRenderer.draw(camera, target, coverage.getTextureView(),
                 coverageX, coverageZ, brightness, true, underground);
