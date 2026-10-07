@@ -10,14 +10,16 @@ Tower of Sighs and its contributors and is licensed under LGPL-2.1. The license
 text is in `aui/LGPL-2.1.txt` beside this notice, and the complete corresponding
 source and build materials for the bundled nine-target library are available at:
 
-https://github.com/kltyton/AUI/tree/bda94fe30072b610dd71713935d2d939c817bc89
+https://github.com/kltyton/AUI/tree/a8d213b5e934e79aac2750389b2e80f2b50e9922
 
 Upstream: https://github.com/Tower-of-Sighs/AUI
 
-The modified library provides native map terrain, entity rendering and the
-standalone Rhino bridge used by Earth. Existing author and copyright notices
-are retained in the source. Earth uses AUI as a separate nested library and does
-not copy its implementation into the Earth source tree.
+The modified library provides basic chunk mesh baking and GPU drawing, the
+standalone Rhino bridge, and the Vue/McUI page runtime. Earth owns map cameras,
+tile sessions and caches, scene composition, entity models and player indicators.
+The map and entity code migrated from the modified AUI implementation is retained
+with its LGPL-2.1 terms; the existing author and copyright notices remain in place.
+Earth uses AUI's chunk rendering and UI implementation as a separate nested library.
 
 The source distribution documents how to build each AUI target. Earth can be
 rebuilt with a modified, interface-compatible AUI JAR by passing
@@ -44,13 +46,12 @@ latvian.dev, and contributors, under MPL-2.0. Its license text is in
 - **JOML 1.10.5**, JOML contributors, MIT. AUI's Forge 1.18.2 and 1.19.2 files
   include it as a nested library with `META-INF/LICENSE`.
   Source: https://github.com/JOML-CI/JOML/tree/1.10.5
-- **Vue 3**, Yuxi (Evan) You and contributors, MIT. AUI retains the runtime
-  license at `assets/apricityui/apricity/apricityui/runtime/vue-license.txt`.
+- **Vue 3.5.34**, Yuxi (Evan) You and contributors, MIT. AUI retains the runtime
+  notice inside `assets/apricityui/apricity/apricityui/runtime/vue.aui.js`.
   Source: https://github.com/vuejs/core
-- **mcui-oreui**, Spectrollay's original OreUI and mcui-oreui contributors,
-  MIT. AUI retains their notices at
-  `assets/apricityui/apricity/apricityui/runtime/mcui/LICENSE.txt` and in its
-  theme directories. The AUI theme adapters retain their MPL-2.0 notices.
+- **McUI2**, Spectrollay and McUI contributors, MIT. AUI retains the notice
+  inside `assets/apricityui/apricity/apricityui/runtime/mcui/mcui-oreui.aui.js`.
+  The existing OreUI compatibility theme retains its MPL-2.0 notices.
 
 ## External requirements
 

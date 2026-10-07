@@ -2,7 +2,7 @@ plugins { id 'net.fabricmc.fabric-loom' version '1.18.2' }
 apply from: '../../gradle/fabric.gradle'
 
 if (!project.hasProperty('auiJar')) {
-    throw new GradleException('This target requires -PauiJar=<matching Fabric AUI JAR with the chunkmap API>')
+    throw new GradleException('This target requires -PauiJar=<matching Fabric AUI JAR with the basic chunk rendering API>')
 }
 def localAuiJar = file(project.property('auiJar'))
 def auiVersion
@@ -11,10 +11,12 @@ new java.util.jar.JarFile(localAuiJar).withCloseable { archive ->
         auiVersion = new groovy.json.JsonSlurper().parse(metadata).version.toString()
     }
     ['com/sighs/apricityui/chunkmap/AuiNativeTerrainRenderer.class',
+     'com/sighs/apricityui/chunkmap/AuiNativeTerrainRenderer$Draw.class',
+     'com/sighs/apricityui/chunkmap/AuiNativeTerrainRenderer$GpuMesh.class',
      'com/sighs/apricityui/client/gui/AuiNativeViewport.class',
-     'com/sighs/apricityui/client/gui/AuiMapEntityLayer.class',
+     'com/sighs/apricityui/chunkmap/AuiNativeMesh.class',
      'assets/apricityui/apricity/apricityui/runtime/mcui/mcui-oreui.aui.js'].each { entry ->
-        if (archive.getEntry(entry) == null) throw new GradleException("Missing Fabric map/component API: ${entry}")
+        if (archive.getEntry(entry) == null) throw new GradleException("Missing Fabric chunk rendering/component API: ${entry}")
     }
 }
 repositories {
@@ -27,3 +29,5 @@ dependencies {
     include(group: 'com.sighs', name: localAuiJar.name - '.jar', version: auiVersion)
     include implementation('dev.latvian.mods:rhino:2101.2.7-build.82')
 }
+
+loom { accessWidenerPath = file('src/main/resources/xaeroearth.accesswidener') }

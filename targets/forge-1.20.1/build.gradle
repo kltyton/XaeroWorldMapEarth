@@ -5,14 +5,16 @@ plugins {
 apply from: '../../gradle/forge.gradle'
 
 if (!project.hasProperty('auiJar')) {
-    throw new GradleException('This target requires -PauiJar=<matching Forge AUI JAR with the chunkmap API>')
+    throw new GradleException('This target requires -PauiJar=<matching Forge AUI JAR with the basic chunk rendering API>')
 }
 def localAuiJar = file(project.property('auiJar'))
 new java.util.jar.JarFile(localAuiJar).withCloseable { archive ->
     ['com/sighs/apricityui/chunkmap/AuiNativeTerrainRenderer.class',
-     'com/sighs/apricityui/chunkmap/AuiNativeTileSession.class',
-     'com/sighs/apricityui/client/gui/AuiMapEntityLayer.class'].each { name ->
-        if (archive.getEntry(name) == null) throw new GradleException("Missing Forge map API: ${name}")
+     'com/sighs/apricityui/chunkmap/AuiNativeTerrainRenderer$Draw.class',
+     'com/sighs/apricityui/chunkmap/AuiNativeTerrainRenderer$GpuMesh.class',
+     'com/sighs/apricityui/chunkmap/AuiChunkMeshBaker.class',
+     'com/sighs/apricityui/chunkmap/AuiNativeMesh.class'].each { name ->
+        if (archive.getEntry(name) == null) throw new GradleException("Missing Forge chunk rendering API: ${name}")
     }
 }
 repositories { maven { url = 'https://maven.latvian.dev/releases' } }

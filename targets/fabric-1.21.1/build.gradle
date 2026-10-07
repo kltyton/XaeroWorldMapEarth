@@ -10,7 +10,7 @@ apply plugin: 'fabric-loom'
 apply from: '../../gradle/fabric.gradle'
 
 if (!project.hasProperty('auiJar')) {
-    throw new GradleException('This target requires -PauiJar=<matching remapped Fabric AUI JAR with the chunkmap API>')
+    throw new GradleException('This target requires -PauiJar=<matching remapped Fabric AUI JAR with the basic chunk rendering API>')
 }
 def localAuiJar = file(project.property('auiJar'))
 def auiVersion
@@ -20,14 +20,14 @@ new java.util.jar.JarFile(localAuiJar).withCloseable { archive ->
     }
     [
         'com/sighs/apricityui/chunkmap/AuiNativeTerrainRenderer.class',
-        'com/sighs/apricityui/chunkmap/AuiNativeTileSession.class',
-        'com/sighs/apricityui/chunkmap/AuiMapCamera.class',
-        'com/sighs/apricityui/chunkmap/AuiActiveMapResources.class',
-        'com/sighs/apricityui/chunkmap/AuiChunkTiles.class',
+        'com/sighs/apricityui/chunkmap/AuiChunkMeshBaker.class',
+        'com/sighs/apricityui/chunkmap/AuiNativeTerrainRenderer$Draw.class',
+        'com/sighs/apricityui/chunkmap/AuiNativeTerrainRenderer$GpuMesh.class',
+        'com/sighs/apricityui/chunkmap/ChunkMapSnapshot.class',
         'assets/apricityui/apricity/apricityui/runtime/mcui/mcui-oreui.aui.js',
         'fabric.mod.json'
     ].each { entry ->
-        if (archive.getEntry(entry) == null) throw new GradleException("The AUI JAR lacks the required Fabric map/component API: ${entry}")
+        if (archive.getEntry(entry) == null) throw new GradleException("The AUI JAR lacks the required Fabric chunk rendering/component API: ${entry}")
     }
 }
 loom {

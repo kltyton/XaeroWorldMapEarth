@@ -21,7 +21,7 @@ repositories {
     }
 }
 
-// Supply the matching local AUI target JAR containing the native map API.
+// Supply the matching local AUI target JAR containing the basic chunk rendering API.
 if (project.hasProperty('auiJar')) {
     def localAuiJar = file(project.property('auiJar'))
     if (!localAuiJar.isFile()) {

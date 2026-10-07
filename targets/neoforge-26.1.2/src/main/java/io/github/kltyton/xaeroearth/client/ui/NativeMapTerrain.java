@@ -1,8 +1,8 @@
 package io.github.kltyton.xaeroearth.client.ui;
 
-import com.sighs.apricityui.chunkmap.AuiMapCamera;
-import com.sighs.apricityui.chunkmap.AuiActiveMapResources;
-import com.sighs.apricityui.chunkmap.AuiNativeTerrainRenderer;
+import io.github.kltyton.xaeroearth.client.chunkmap.MapCamera;
+import io.github.kltyton.xaeroearth.client.chunkmap.ActiveMapResources;
+import io.github.kltyton.xaeroearth.client.chunkmap.NativeTerrainScene;
 import io.github.kltyton.xaeroearth.client.EarthPreferences;
 import io.github.kltyton.xaeroearth.client.bridge.XaeroMapBridge;
 import io.github.kltyton.xaeroearth.client.mixin.GuiMapAccess;
@@ -12,23 +12,23 @@ import xaero.map.gui.GuiMap;
 
 /** Draws native terrain around the entity pass using the same camera and depth target. */
 public final class NativeMapTerrain {
-    private static AuiNativeTerrainRenderer renderer;
-    private static AuiActiveMapResources rendererResources;
-    private static AuiMapCamera camera;
+    private static NativeTerrainScene renderer;
+    private static ActiveMapResources rendererResources;
+    private static MapCamera camera;
     private static XaeroMapBridge bridge;
     private static long installedScene = -1;
     private static String viewMode;
     private static double streetScale;
     private static boolean transparentPending;
 
-    public static void prewarm(AuiActiveMapResources resources) {
+    public static void prewarm(ActiveMapResources resources) {
         if (renderer != null && rendererResources == resources) return;
         hide();
         rendererResources = resources;
-        renderer = new AuiNativeTerrainRenderer();
+        renderer = new NativeTerrainScene();
     }
 
-    public static void draw(GuiMap map, XaeroMapBridge data, AuiActiveMapResources resources) {
+    public static void draw(GuiMap map, XaeroMapBridge data, ActiveMapResources resources) {
         transparentPending = false;
         if (!data.prepareFrame(map)) { suspend(); return; }
         prewarm(resources);
@@ -47,7 +47,7 @@ public final class NativeMapTerrain {
         double height = data.heightAt(access.earth$cameraX(), access.earth$cameraZ(),
                 minecraft.player == null ? 64 : minecraft.player.blockPosition().getY());
         height = NativeMapInput.height(height);
-        var nextCamera = new AuiMapCamera(access.earth$cameraX(), height, access.earth$cameraZ(),
+        var nextCamera = new MapCamera(access.earth$cameraX(), height, access.earth$cameraZ(),
                 scale, NativeMapInput.yaw(), NativeMapInput.angle(), mode, map.width, map.height,
                 data.presentationUnit(), mode.equals("street") ? Math.clamp(Math.toDegrees(2 * Math.atan(
                         Math.tan(Math.toRadians(75) / 2) * streetScale / access.earth$scale())), 1, 170) : 75);
@@ -101,7 +101,7 @@ public final class NativeMapTerrain {
 
     public static boolean active() { return camera != null; }
 
-    public static AuiMapCamera camera() { return camera; }
+    public static MapCamera camera() { return camera; }
 
     /** Pauses map input while keeping this world's resident GPU meshes and atlas. */
     public static void suspend() {

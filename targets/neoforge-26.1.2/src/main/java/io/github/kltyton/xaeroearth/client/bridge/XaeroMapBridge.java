@@ -4,10 +4,10 @@ import com.mojang.blaze3d.textures.TextureFormat;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.logging.LogUtils;
-import com.sighs.apricityui.chunkmap.AuiNativeTerrainRenderer.Surface;
-import com.sighs.apricityui.chunkmap.AuiChunkTiles;
-import com.sighs.apricityui.chunkmap.AuiNativeTileSession;
-import com.sighs.apricityui.chunkmap.AuiMapCamera;
+import io.github.kltyton.xaeroearth.client.chunkmap.NativeTerrainScene.Surface;
+import io.github.kltyton.xaeroearth.client.chunkmap.ChunkTiles;
+import io.github.kltyton.xaeroearth.client.chunkmap.NativeTileSession;
+import io.github.kltyton.xaeroearth.client.chunkmap.MapCamera;
 import io.github.kltyton.xaeroearth.client.mixin.GuiMapAccess;
 import java.nio.ByteBuffer;
 import java.lang.ref.WeakReference;
@@ -75,8 +75,8 @@ public final class XaeroMapBridge implements AutoCloseable {
     private volatile Surface surface;
     private CompletableFuture<Surface> publishing;
     private long publishGeneration, surfaceRevision;
-    private AuiNativeTileSession models;
-    private Map<AuiChunkTiles.Tile, Integer> visibleModels = Map.of();
+    private NativeTileSession models;
+    private Map<ChunkTiles.Tile, Integer> visibleModels = Map.of();
     private long modelRevision = -1, mappedRevision = -1, tileRevision;
     private float brightness = Float.NaN;
     private Bounds viewport, visibleViewport, publishingViewport;
@@ -107,7 +107,7 @@ public final class XaeroMapBridge implements AutoCloseable {
     }
 
     /** Reads the native caches within the same camera frustum used by the GPU passes. */
-    public boolean capture(GuiMap map, AuiMapCamera camera) {
+    public boolean capture(GuiMap map, MapCamera camera) {
         if (!Minecraft.getInstance().isSameThread()) throw new IllegalStateException("Read mapped terrain on the client thread");
         if (closed || scene == null || scene.processor != map.getMapProcessor()) return false;
         MapProcessor processor = scene.processor;
@@ -165,7 +165,7 @@ public final class XaeroMapBridge implements AutoCloseable {
         return true;
     }
 
-    private Bounds bounds(AuiMapCamera camera) {
+    private Bounds bounds(MapCamera camera) {
         var dimension = scene.processor.getMapWorld().getCurrentDimension();
         var registry = scene.processor.getWorldDimensionTypeRegistry();
         var type = registry != null && !dimension.isUsingUnknownDimensionType(registry)
@@ -216,7 +216,7 @@ public final class XaeroMapBridge implements AutoCloseable {
             return;
         }
         if (modelRevision == models.revision() && mappedRevision == tileRevision) return;
-        var visible = new java.util.HashMap<AuiChunkTiles.Tile, Integer>();
+        var visible = new java.util.HashMap<ChunkTiles.Tile, Integer>();
         for (var tile : models.versions().keySet()) {
             int minX = tile.x() * 32, minZ = tile.z() * 32;
             int mask = 0, available = models.availableMask(tile);
@@ -405,8 +405,8 @@ public final class XaeroMapBridge implements AutoCloseable {
     }
 
     public Surface surface() { return surface; }
-    public AuiNativeTileSession models() { return models; }
-    public Map<AuiChunkTiles.Tile, Integer> visibleModels() { return visibleModels; }
+    public NativeTileSession models() { return models; }
+    public Map<ChunkTiles.Tile, Integer> visibleModels() { return visibleModels; }
     public long sceneKey() { return generation; }
     public double presentationUnit() { return 1; }
     public float brightness() { return brightness; }
@@ -416,7 +416,7 @@ public final class XaeroMapBridge implements AutoCloseable {
 
     private int heightAt(double x, double z, int unknown, boolean leafOnly) {
         int worldX = (int) Math.floor(x), worldZ = (int) Math.floor(z);
-        var tile = new AuiChunkTiles.Tile(Math.floorDiv(worldX, 32), Math.floorDiv(worldZ, 32));
+        var tile = new ChunkTiles.Tile(Math.floorDiv(worldX, 32), Math.floorDiv(worldZ, 32));
         int quadrant = (Math.floorMod(worldZ, 32) / 16) * 2 + Math.floorMod(worldX, 32) / 16;
         if (!leafOnly && models != null && (visibleModels.getOrDefault(tile, 0) & (1 << quadrant)) != 0)
             return models.heightAt(x, z, unknown);

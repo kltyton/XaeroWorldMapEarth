@@ -27,6 +27,7 @@
   "suggests": {
     "xaerominimap": ">=26.4.0"
   },
+  "accessWidener": "xaeroearth.accesswidener",
   "mixins": [
     "xaeroearth.mixins.json"
   ]

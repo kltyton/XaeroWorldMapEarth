@@ -1,7 +1,7 @@
 package io.github.kltyton.xaeroearth.client.ui;
 
-import com.sighs.apricityui.client.gui.AuiEntityPreview;
-import com.sighs.apricityui.client.gui.AuiMapEntityLayer;
+import io.github.kltyton.xaeroearth.client.render.entity.EntityPreview;
+import io.github.kltyton.xaeroearth.client.render.entity.MapEntityLayer;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import io.github.kltyton.xaeroearth.client.EarthClient;
 import io.github.kltyton.xaeroearth.client.EarthPreferences;
@@ -43,14 +43,14 @@ public final class NativeMapEntityIndicators {
         if (current == null || current.map != map || !loaded(current, actor)
                 || !WorldMap.INSTANCE.getConfigs().getClientConfigManager().getEffective(WorldMapProfiledConfigOptions.ARROW)) return false;
         if (current.actorId != null && current.actorId.equals(actor.getUUID())) {
-            return AuiMapEntityLayer.visible(NativeMapTerrain.camera(), current.models.get(current.actorId));
+            return MapEntityLayer.visible(NativeMapTerrain.camera(), current.models.get(current.actorId));
         }
         var position = actor.getPosition(current.partialTicks);
-        AuiEntityPreview.Model model = capture(current, actor, position.x, position.y, position.z);
+        EntityPreview.Model model = capture(current, actor, position.x, position.y, position.z);
         if (model == null) return false;
         current.models.put(actor.getUUID(), model);
         current.actorId = actor.getUUID();
-        return AuiMapEntityLayer.visible(NativeMapTerrain.camera(), model);
+        return MapEntityLayer.visible(NativeMapTerrain.camera(), model);
     }
 
     public static boolean replaceTracked(PlayerTrackerMapElement<?> marker, ElementRenderInfo info) {
@@ -61,7 +61,7 @@ public final class NativeMapEntityIndicators {
         Entity entity = current.level.getPlayerByUUID(marker.getPlayerId());
         if (!loaded(current, entity)) return false;
         if (entity.getUUID().equals(current.actorId)) return true;
-        AuiEntityPreview.Model model = capture(current, entity, marker.getX(), marker.getY(), marker.getZ());
+        EntityPreview.Model model = capture(current, entity, marker.getX(), marker.getY(), marker.getZ());
         if (model == null) return false;
         current.models.put(entity.getUUID(), model);
         return true;
@@ -72,12 +72,12 @@ public final class NativeMapEntityIndicators {
         if (current == null || info.location != ElementRenderLocation.WORLD_MAP
                 || !current.level.dimension().equals(info.mapDimension) || !loaded(current, entity)) return;
         var position = entity.getPosition(current.partialTicks);
-        AuiEntityPreview.Model model = capture(current, entity, position.x, position.y, position.z);
+        EntityPreview.Model model = capture(current, entity, position.x, position.y, position.z);
         if (model != null) current.models.put(entity.getUUID(), model);
     }
 
-    private static AuiEntityPreview.Model capture(Frame current, Entity entity, double x, double y, double z) {
-        return AuiEntityPreview.capture(entity, current.partialTicks, x, y, z);
+    private static EntityPreview.Model capture(Frame current, Entity entity, double x, double y, double z) {
+        return EntityPreview.capture(entity, current.partialTicks, x, y, z);
     }
 
     private static boolean loaded(Frame current, Entity entity) {
@@ -100,13 +100,13 @@ public final class NativeMapEntityIndicators {
         try {
             replaceActor(map, actor);
             if (current != null && current.map == map && !current.models.isEmpty()) {
-                AuiMapEntityLayer.drawModels(NativeMapTerrain.camera(), current.models.values(), target);
+                MapEntityLayer.drawModels(NativeMapTerrain.camera(), current.models.values(), target);
             }
         } finally {
             NativeMapTerrain.finishTerrain();
         }
         if (current != null && current.map == map && !current.models.isEmpty()) {
-            AuiMapEntityLayer.drawIndicators(NativeMapTerrain.camera(), current.models.values(), target);
+            MapEntityLayer.drawIndicators(NativeMapTerrain.camera(), current.models.values(), target);
         }
         NativeMapElementLayer.composite(target);
     }
@@ -117,7 +117,7 @@ public final class NativeMapEntityIndicators {
 
     public static void close() {
         frame = null;
-        AuiMapEntityLayer.close();
+        MapEntityLayer.close();
         NativeMapElementLayer.close();
     }
 
@@ -126,7 +126,7 @@ public final class NativeMapEntityIndicators {
         private final GuiGraphicsExtractor graphics;
         private final ClientLevel level;
         private final float partialTicks;
-        private final Map<UUID, AuiEntityPreview.Model> models = new LinkedHashMap<>();
+        private final Map<UUID, EntityPreview.Model> models = new LinkedHashMap<>();
         private UUID actorId;
 
         private Frame(GuiMap map, GuiGraphicsExtractor graphics, ClientLevel level, float partialTicks) {

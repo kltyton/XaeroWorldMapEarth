@@ -4,6 +4,7 @@
   "package": "io.github.kltyton.xaeroearth.client.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "MapTextureAtlasAccess",
     "GuiMapAccess",
     "GuiMapMixin",
     "GuiTexturedButtonMixin",

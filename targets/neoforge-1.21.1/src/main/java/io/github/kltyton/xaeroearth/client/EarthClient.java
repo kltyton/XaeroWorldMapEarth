@@ -3,8 +3,8 @@ package io.github.kltyton.xaeroearth.client;
 import io.github.kltyton.xaeroearth.client.bridge.XaeroMapBridge;
 import io.github.kltyton.xaeroearth.client.ui.NativeMapSkin;
 import io.github.kltyton.xaeroearth.client.ui.NativeMapTerrain;
-import com.sighs.apricityui.chunkmap.AuiActiveMapResources;
-import com.sighs.apricityui.chunkmap.AuiNativeTileSession;
+import io.github.kltyton.xaeroearth.client.chunkmap.ActiveMapResources;
+import io.github.kltyton.xaeroearth.client.chunkmap.NativeTileSession;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
@@ -27,8 +27,8 @@ public final class EarthClient {
     private static XaeroMapBridge bridge;
     private static Object level;
     private static GuiMap themedMap;
-    private static AuiActiveMapResources resources;
-    private static AuiNativeTileSession models;
+    private static ActiveMapResources resources;
+    private static NativeTileSession models;
     private static String modelWorld, modelDimension, modelMultiworld;
     private static final int MODEL_THREADS = Math.clamp(Runtime.getRuntime().availableProcessors() / 2, 2, 4);
     private static final java.util.Set<Screen> themedScreens = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
@@ -111,9 +111,9 @@ public final class EarthClient {
             if (models == null && currentModelContext) {
                 modelWorld = processor.getCurrentWorldId(); modelDimension = processor.getCurrentDimId();
                 modelMultiworld = processor.getCurrentMWId();
-                models = new AuiNativeTileSession(minecraft.level, resources, cacheDirectory(),
+                models = new NativeTileSession(minecraft.level, resources, cacheDirectory(),
                         modelWorld + ":" + modelDimension + ":" + modelMultiworld, MODEL_THREADS,
-                        AuiNativeTileSession.Options.WORLD_MAP);
+                        NativeTileSession.Options.WORLD_MAP);
                 NativeMapTerrain.prewarm(resources);
             }
             if (models != null && minecraft.player != null && currentModelContext) {
@@ -148,7 +148,7 @@ public final class EarthClient {
 
     public static boolean themed(GuiMap map) { return EarthPreferences.ENABLED.get() && Minecraft.getInstance().screen == map; }
 
-    public static AuiNativeTileSession modelsFor(GuiMap map) {
+    public static NativeTileSession modelsFor(GuiMap map) {
         var processor = map.getMapProcessor();
         return models != null && processor.getWorld() == Minecraft.getInstance().level
                 && !processor.isConsideringNetherFairPlay() && processor.isCurrentMultiworldWritable()
@@ -190,7 +190,7 @@ public final class EarthClient {
         NativeMapTerrain.hide();
         if (resources != null) resources.close();
         closeModels();
-        resources = new AuiActiveMapResources(manager, cacheDirectory(), MODEL_THREADS);
+        resources = new ActiveMapResources(manager, cacheDirectory(), MODEL_THREADS);
         NativeMapTerrain.prewarm(resources);
         resources.renderer().whenComplete((renderer, failure) -> {
             if (failure != null && !(failure instanceof java.util.concurrent.CancellationException)

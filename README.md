@@ -65,7 +65,9 @@ ApricityUI 1.2.7 and Rhino are bundled in the release JARs.
 
 ## Building from source
 
-Each directory under `targets/` is an independent Gradle project. Use the Java version listed above and a matching AUI JAR built from the [corresponding AUI source](https://github.com/kltyton/AUI/tree/bda94fe30072b610dd71713935d2d939c817bc89).
+Each directory under `targets/` is an independent Gradle project. Use the Java version listed above and a matching [ApricityUI](https://github.com/Tower-of-Sighs/AUI) JAR with the basic chunk mesh upload and drawing API.
+
+ApricityUI provides block-model baking, chunk mesh drawing, and the UI runtime. This addon owns map cameras, world and dimension sessions, tile caches, map surfaces, entity models, and player portrait indicators.
 
 For example, on Windows:
 

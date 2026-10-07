@@ -1,6 +1,7 @@
 apply from: '../../gradle/common.gradle'
 
 legacyForge {
+    accessTransformers { file('src/main/resources/META-INF/accesstransformer.cfg') }
     version = "${minecraft_version}-${loader_version}"
     mods {
         xaeroearth { sourceSet(sourceSets.main) }

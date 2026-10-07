@@ -3,7 +3,7 @@ package io.github.kltyton.xaeroearth.client.ui;
 import io.github.kltyton.xaeroearth.client.EarthClient;
 import io.github.kltyton.xaeroearth.client.EarthPreferences;
 import io.github.kltyton.xaeroearth.client.mixin.GuiMapAccess;
-import com.sighs.apricityui.chunkmap.AuiMapCamera;
+import io.github.kltyton.xaeroearth.client.chunkmap.MapCamera;
 import java.util.HashSet;
 import java.util.Set;
 import net.minecraft.client.Minecraft;
@@ -31,7 +31,7 @@ public final class NativeMapInput {
     private static boolean rotating;
     private static int rotatingButton = -1;
     private static double lastMouseX, lastMouseY;
-    private static AuiMapCamera panCamera, releasedPanCamera;
+    private static MapCamera panCamera, releasedPanCamera;
     private static Vec3 panAnchor;
     private static double panHeight = Double.NaN;
 
@@ -93,14 +93,14 @@ public final class NativeMapInput {
         access.earth$cameraZ(panCamera.z() + panAnchor.z - point.z);
     }
 
-    private static Vec3 planePoint(AuiMapCamera camera, double x, double y) {
+    private static Vec3 planePoint(MapCamera camera, double x, double y) {
         var ray = camera.ray(x, y);
         double distance = -ray[0].y / ray[1].y;
         return new Vec3(ray[0].x + ray[1].x * distance, 0, ray[0].z + ray[1].z * distance);
     }
 
     public static void releasePan(GuiMap map) {
-        AuiMapCamera released = releasedPanCamera != null ? releasedPanCamera : panCamera;
+        MapCamera released = releasedPanCamera != null ? releasedPanCamera : panCamera;
         if (currentMap != map || released == null) return;
         var access = (GuiMapAccess) map;
         double x = access.earth$cameraX(), z = access.earth$cameraZ();
