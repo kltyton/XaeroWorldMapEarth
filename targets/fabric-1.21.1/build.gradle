@@ -4,30 +4,34 @@ buildscript {
         maven { url = 'https://maven.fabricmc.net/' }
         mavenCentral()
     }
-    dependencies { classpath 'net.fabricmc:fabric-loom:1.10.5' }
+    dependencies {
+        classpath 'net.fabricmc:fabric-loom:1.10.5'
+        classpath 'me.modmuss50:mod-publish-plugin:2.1.1'
+    }
 }
 apply plugin: 'fabric-loom'
-apply from: '../../gradle/fabric.gradle'
+apply plugin: 'me.modmuss50.mod-publish-plugin'
+apply from: '../../gradle/target-conventions/fabric.gradle'
 
-if (!project.hasProperty('auiJar')) {
-    throw new GradleException('This target requires -PauiJar=<matching remapped Fabric AUI JAR with the basic chunk rendering API>')
+if (!project.hasProperty('kuiJar')) {
+    throw new GradleException('This target requires -PkuiJar=<matching remapped Fabric KUI JAR with the basic chunk rendering API>')
 }
-def localAuiJar = file(project.property('auiJar'))
-def auiVersion
-new java.util.jar.JarFile(localAuiJar).withCloseable { archive ->
+def localKuiJar = file(project.property('kuiJar'))
+def kuiVersion
+new java.util.jar.JarFile(localKuiJar).withCloseable { archive ->
     archive.getInputStream(archive.getEntry('fabric.mod.json')).withCloseable { metadata ->
-        auiVersion = new groovy.json.JsonSlurper().parse(metadata).version.toString()
+        kuiVersion = new groovy.json.JsonSlurper().parse(metadata).version.toString()
     }
     [
-        'com/sighs/apricityui/chunkmap/AuiNativeTerrainRenderer.class',
-        'com/sighs/apricityui/chunkmap/AuiChunkMeshBaker.class',
-        'com/sighs/apricityui/chunkmap/AuiNativeTerrainRenderer$Draw.class',
-        'com/sighs/apricityui/chunkmap/AuiNativeTerrainRenderer$GpuMesh.class',
-        'com/sighs/apricityui/chunkmap/ChunkMapSnapshot.class',
-        'assets/apricityui/apricity/apricityui/runtime/mcui/mcui-oreui.aui.js',
+        'io/github/kltyton/kltytonui/chunkmap/KuiNativeTerrainRenderer.class',
+        'io/github/kltyton/kltytonui/chunkmap/KuiChunkMeshBaker.class',
+        'io/github/kltyton/kltytonui/chunkmap/KuiNativeTerrainRenderer$Draw.class',
+        'io/github/kltyton/kltytonui/chunkmap/KuiNativeTerrainRenderer$GpuMesh.class',
+        'io/github/kltyton/kltytonui/chunkmap/ChunkMapSnapshot.class',
+        'assets/kltytonui/kltytonui/kltytonui/runtime/mcui/mcui-oreui.kui.js',
         'fabric.mod.json'
     ].each { entry ->
-        if (archive.getEntry(entry) == null) throw new GradleException("The AUI JAR lacks the required Fabric chunk rendering/component API: ${entry}")
+        if (archive.getEntry(entry) == null) throw new GradleException("The KUI JAR lacks the required Fabric chunk rendering/component API: ${entry}")
     }
 }
 loom {
@@ -35,11 +39,11 @@ loom {
 }
 repositories {
     maven { url = 'https://maven.latvian.dev/releases' }
-    flatDir { dirs localAuiJar.parentFile }
+    flatDir { dirs localKuiJar.parentFile }
 }
 dependencies {
     modImplementation 'net.fabricmc.fabric-api:fabric-api:0.116.15+1.21.1'
-    modRuntimeOnly files(localAuiJar)
-    include(group: 'com.sighs', name: localAuiJar.name - '.jar', version: auiVersion)
+    modRuntimeOnly files(localKuiJar)
+    include(group: 'io.github.kltyton.kltytonui', name: localKuiJar.name - '.jar', version: kuiVersion)
     include modImplementation('dev.latvian.mods:rhino:2101.2.7-build.82')
 }

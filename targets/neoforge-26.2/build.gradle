@@ -1,33 +1,34 @@
 plugins {
+    id 'me.modmuss50.mod-publish-plugin' version '2.1.1'
     id 'java-library'
     id 'net.neoforged.moddev' version '2.0.147'
 }
-apply from: '../../gradle/neoforge.gradle'
+apply from: '../../gradle/target-conventions/neoforge.gradle'
 
-if (!project.hasProperty('auiJar')) {
-    throw new GradleException('This target requires -PauiJar=<matching AUI JAR with the basic chunk rendering API>')
+if (!project.hasProperty('kuiJar')) {
+    throw new GradleException('This target requires -PkuiJar=<matching KUI JAR with the basic chunk rendering API>')
 }
-def localAuiJar = file(project.property('auiJar'))
-def requiredAuiEntries = [
-    'com/sighs/apricityui/chunkmap/AuiNativeTerrainRenderer.class',
-    'com/sighs/apricityui/chunkmap/AuiChunkMeshBaker.class',
-    'com/sighs/apricityui/chunkmap/AuiNativeTerrainRenderer$Draw.class',
-    'com/sighs/apricityui/chunkmap/AuiNativeTerrainRenderer$GpuMesh.class',
-    'com/sighs/apricityui/chunkmap/ChunkMapSnapshot.class',
-    'assets/apricityui/apricity/apricityui/runtime/mcui/mcui-oreui.aui.js'
+def localKuiJar = file(project.property('kuiJar'))
+def requiredKuiEntries = [
+    'io/github/kltyton/kltytonui/chunkmap/KuiNativeTerrainRenderer.class',
+    'io/github/kltyton/kltytonui/chunkmap/KuiChunkMeshBaker.class',
+    'io/github/kltyton/kltytonui/chunkmap/KuiNativeTerrainRenderer$Draw.class',
+    'io/github/kltyton/kltytonui/chunkmap/KuiNativeTerrainRenderer$GpuMesh.class',
+    'io/github/kltyton/kltytonui/chunkmap/ChunkMapSnapshot.class',
+    'assets/kltytonui/kltytonui/kltytonui/runtime/mcui/mcui-oreui.kui.js'
 ]
-new java.util.jar.JarFile(localAuiJar).withCloseable { archive ->
-    requiredAuiEntries.each { entry ->
-        if (archive.getEntry(entry) == null) throw new GradleException("The AUI JAR lacks the required chunk rendering/component API: ${entry}")
+new java.util.jar.JarFile(localKuiJar).withCloseable { archive ->
+    requiredKuiEntries.each { entry ->
+        if (archive.getEntry(entry) == null) throw new GradleException("The KUI JAR lacks the required chunk rendering/component API: ${entry}")
     }
     if (!archive.manifest?.mainAttributes?.getValue('Automatic-Module-Name')
             && archive.getEntry('module-info.class') == null) {
-        throw new GradleException('The AUI JAR must declare Automatic-Module-Name or module-info.class for local jar-in-jar packaging')
+        throw new GradleException('The KUI JAR must declare Automatic-Module-Name or module-info.class for local jar-in-jar packaging')
     }
 }
 dependencies {
-    runtimeOnly files(localAuiJar)
-    jarJar files(localAuiJar)
+    runtimeOnly files(localKuiJar)
+    jarJar files(localKuiJar)
     jarJar(implementation('dev.latvian.mods:rhino:2101.2.7-build.82')) {
         version { strictly '[2101.2.7-build.82]'; prefer '2101.2.7-build.82' }
     }

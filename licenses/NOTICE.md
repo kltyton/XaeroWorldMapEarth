@@ -3,14 +3,14 @@
 Xaero's World Map: Earth is developed by kltyton and licensed under MIT. Its
 license does not replace the licenses of bundled libraries or external mods.
 
-## ApricityUI (AUI)
+## KltytonUI
 
-Release files bundle a modified ApricityUI 1.2.7 library. ApricityUI is by
-Tower of Sighs and its contributors and is licensed under LGPL-2.1. The license
-text is in `aui/LGPL-2.1.txt` beside this notice, and the complete corresponding
+Release files bundle KltytonUI 1.2.7, maintained by kltyton and based on
+ApricityUI by Tower of Sighs and its contributors, under LGPL-2.1. The license
+text is in `kui/LGPL-2.1.txt` beside this notice, and the complete corresponding
 source and build materials for the bundled nine-target library are available at:
 
-https://github.com/kltyton/AUI/tree/a8d213b5e934e79aac2750389b2e80f2b50e9922
+https://github.com/kltyton/KltytonUI/tree/1d64ed14830ae1809be4e14ddc97cba8f7caa76b
 
 Upstream: https://github.com/Tower-of-Sighs/AUI
 
@@ -19,11 +19,11 @@ standalone Rhino bridge, and the Vue/McUI page runtime. Earth owns map cameras,
 tile sessions and caches, scene composition, entity models and player indicators.
 The map and entity code migrated from the modified AUI implementation is retained
 with its LGPL-2.1 terms; the existing author and copyright notices remain in place.
-Earth uses AUI's chunk rendering and UI implementation as a separate nested library.
+Earth uses KltytonUI's chunk rendering and UI implementation as a separate nested library.
 
-The source distribution documents how to build each AUI target. Earth can be
-rebuilt with a modified, interface-compatible AUI JAR by passing
-`-PauiJar=<path>` to the selected Earth target's Gradle wrapper.
+The source distribution documents how to build each KltytonUI target. Earth can
+be rebuilt with an interface-compatible KltytonUI JAR by passing
+`-PkuiJar=<path>` to the selected Earth target's Gradle wrapper.
 
 ## Rhino
 
@@ -43,14 +43,14 @@ latvian.dev, and contributors, under MPL-2.0. Its license text is in
 - **MixinExtras 0.4.1**, LlamaLad7, MIT. Forge files retain
   `LICENSE_MixinExtras` inside the nested library.
   Source: https://github.com/LlamaLad7/MixinExtras/tree/0.4.1
-- **JOML 1.10.5**, JOML contributors, MIT. AUI's Forge 1.18.2 and 1.19.2 files
+- **JOML 1.10.5**, JOML contributors, MIT. KltytonUI's Forge 1.18.2 and 1.19.2 files
   include it as a nested library with `META-INF/LICENSE`.
   Source: https://github.com/JOML-CI/JOML/tree/1.10.5
-- **Vue 3.5.34**, Yuxi (Evan) You and contributors, MIT. AUI retains the runtime
-  notice inside `assets/apricityui/apricity/apricityui/runtime/vue.aui.js`.
+- **Vue 3.5.34**, Yuxi (Evan) You and contributors, MIT. KltytonUI retains the runtime
+  notice inside `assets/kltytonui/kltytonui/kltytonui/runtime/vue.kui.js`.
   Source: https://github.com/vuejs/core
-- **McUI2**, Spectrollay and McUI contributors, MIT. AUI retains the notice
-  inside `assets/apricityui/apricity/apricityui/runtime/mcui/mcui-oreui.aui.js`.
+- **McUI2**, Spectrollay and McUI contributors, MIT. KltytonUI retains the notice
+  inside `assets/kltytonui/kltytonui/kltytonui/runtime/mcui/mcui-oreui.kui.js`.
   The existing OreUI compatibility theme retains its MPL-2.0 notices.
 
 ## External requirements

@@ -1,0 +1,14 @@
+apply from: '../../gradle/target-conventions/base.gradle'
+apply from: '../../gradle/target-conventions/publish.gradle'
+
+neoForge {
+    version = loader_version
+    mods {
+        xaeroearth { sourceSet(sourceSets.main) }
+    }
+}
+
+dependencies {
+    implementation "xaero.map:xaeroworldmap-neoforge-${xaero_mc_version}:${xaero_version}"
+    if (project.hasProperty('kuiJar')) compileOnly files(file(project.property('kuiJar')))
+}

@@ -6,6 +6,8 @@ run/
 **/run/
 **/bin/
 .idea/
+.temple/
+temple.local.properties
 *.iml
 .project
 .classpath

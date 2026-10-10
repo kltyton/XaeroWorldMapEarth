@@ -1,0 +1,114 @@
+def templeRoot = file('../..')
+def identity = new Properties()
+new File(templeRoot, 'gradle.properties').withReader('UTF-8') { identity.load(it) }
+identity.each { key, value ->
+    if (!project.hasProperty(key.toString())) ext.set(key.toString(), value.toString())
+}
+def localSettings = new File(templeRoot, 'temple.local.properties')
+if (localSettings.isFile() && !project.hasProperty('kuiJar')) {
+    def local = new Properties()
+    localSettings.withReader('UTF-8') { local.load(it) }
+    def configuredJar = local.getProperty("kuiJar.${project.projectDir.name}", local.getProperty('kuiJar'))
+    if (configuredJar) ext.kuiJar = configuredJar
+}
+group = mod_group_id
+version = mod_version
+
+base {
+    archivesName = project.name
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(Integer.parseInt(java_version))
+    withSourcesJar()
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        name = 'Xaero'
+        url = 'https://chocolateminecraft.com/maven'
+        content {
+            includeGroup 'xaero.map'
+            includeGroup 'xaero.lib'
+        }
+    }
+}
+
+// Supply the matching local KUI target JAR containing the basic chunk rendering API.
+if (project.hasProperty('kuiJar')) {
+    def localKuiJar = file(project.property('kuiJar'))
+    if (!localKuiJar.isFile()) {
+        throw new GradleException("KUI JAR does not exist: ${localKuiJar}")
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = Integer.parseInt(java_version)
+}
+
+tasks.withType(Jar).configureEach {
+    from(file('../../LICENSE')) {
+        into 'META-INF'
+    }
+    from(file('../../licenses')) {
+        into 'META-INF/licenses'
+    }
+}
+
+tasks.named('processResources', ProcessResources).configure {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    def props = [mod_version: project.version, minecraft_version: minecraft_version,
+                 java_version: java_version, loader_version: loader_version,
+                 minecraft_version_range: minecraft_version_range,
+                 loader_version_range: loader_version_range]
+    inputs.properties(props)
+    filesMatching(['fabric.mod.json', 'META-INF/mods.toml', 'META-INF/neoforge.mods.toml']) {
+        expand(props)
+    }
+}
+
+def layers = shared_sources.split(',').collect { name ->
+    def directory = new File(templeRoot, name.trim()).canonicalFile
+    def rootPath = templeRoot.canonicalFile.toPath()
+    if (!directory.toPath().startsWith(rootPath) || directory.toPath() == rootPath ||
+            directory.toPath().startsWith(rootPath.resolve('targets'))) {
+        throw new GradleException("Invalid shared source layer: ${name}")
+    }
+    directory
+}
+sourceSets.main {
+    java.srcDirs(layers.collect { new File(it, 'src/main/java') })
+    resources.srcDirs(layers.collect { new File(it, 'src/main/resources') })
+}
+def constantsDirectory = layout.buildDirectory.dir('generated/sources/temple')
+def generateConstants = tasks.register('generateTempleConstants') {
+    inputs.properties([mod_id: mod_id, mod_java_package: mod_java_package])
+    outputs.dir(constantsDirectory)
+    doLast {
+        def destination = constantsDirectory.get().file(mod_java_package.replace('.', '/') + '/BuildInfo.java').asFile
+        destination.parentFile.mkdirs()
+        destination.setText("package ${mod_java_package};\n\npublic final class BuildInfo {\n" +
+                "    public static final String MOD_ID = \"${mod_id}\";\n" +
+                "    private BuildInfo() {}\n}\n", 'UTF-8')
+    }
+}
+sourceSets.main.java.srcDir(constantsDirectory)
+tasks.named('compileJava') { dependsOn generateConstants }
+tasks.named('sourcesJar', Jar) {
+    dependsOn generateConstants
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+tasks.register('distributionJar') {
+    group = 'build'
+    description = 'Assemble the release JAR and record its path for the root controller.'
+    dependsOn tasks.named('assemble')
+    doLast {
+        def production = tasks.findByName('remapJar') ?: tasks.findByName('reobfJar') ?: tasks.named('jar').get()
+        def artifact = production.archiveFile.get().asFile
+        def record = layout.buildDirectory.file('temple/artifact.properties').get().asFile
+        record.parentFile.mkdirs()
+        record.setText("artifact=${artifact.absolutePath.replace('\\', '/')}\n", 'UTF-8')
+    }
+}

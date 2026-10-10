@@ -1,27 +1,28 @@
 plugins {
+    id 'me.modmuss50.mod-publish-plugin' version '2.1.1'
     id 'java-library'
     id 'net.neoforged.moddev.legacyforge' version '2.0.91'
 }
-apply from: '../../gradle/forge.gradle'
+apply from: '../../gradle/target-conventions/forge.gradle'
 
-if (!project.hasProperty('auiJar')) {
-    throw new GradleException('This target requires -PauiJar=<matching Forge AUI JAR with the basic chunk rendering API>')
+if (!project.hasProperty('kuiJar')) {
+    throw new GradleException('This target requires -PkuiJar=<matching Forge KUI JAR with the basic chunk rendering API>')
 }
-def localAuiJar = file(project.property('auiJar'))
-new java.util.jar.JarFile(localAuiJar).withCloseable { archive ->
-    ['com/sighs/apricityui/chunkmap/AuiNativeTerrainRenderer.class',
-     'com/sighs/apricityui/chunkmap/AuiNativeTerrainRenderer$Draw.class',
-     'com/sighs/apricityui/chunkmap/AuiNativeTerrainRenderer$GpuMesh.class',
-     'com/sighs/apricityui/chunkmap/AuiChunkMeshBaker.class',
-     'com/sighs/apricityui/chunkmap/AuiNativeMesh.class'].each { name ->
+def localKuiJar = file(project.property('kuiJar'))
+new java.util.jar.JarFile(localKuiJar).withCloseable { archive ->
+    ['io/github/kltyton/kltytonui/chunkmap/KuiNativeTerrainRenderer.class',
+     'io/github/kltyton/kltytonui/chunkmap/KuiNativeTerrainRenderer$Draw.class',
+     'io/github/kltyton/kltytonui/chunkmap/KuiNativeTerrainRenderer$GpuMesh.class',
+     'io/github/kltyton/kltytonui/chunkmap/KuiChunkMeshBaker.class',
+     'io/github/kltyton/kltytonui/chunkmap/KuiNativeMesh.class'].each { name ->
         if (archive.getEntry(name) == null) throw new GradleException("Missing Forge chunk rendering API: ${name}")
     }
 }
 repositories { maven { url = 'https://maven.latvian.dev/releases' } }
 dependencies {
     compileOnly 'org.joml:joml:1.10.5'
-    runtimeOnly files(localAuiJar)
-    jarJar files(localAuiJar)
+    runtimeOnly files(localKuiJar)
+    jarJar files(localKuiJar)
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
     compileOnly 'io.github.llamalad7:mixinextras-common:0.4.1'
     annotationProcessor 'io.github.llamalad7:mixinextras-common:0.4.1'
