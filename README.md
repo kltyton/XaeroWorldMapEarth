@@ -35,6 +35,7 @@ KltytonUI 1.2.7 and Rhino are bundled in the release JARs.
 | 26.1.2 | Fabric | 25 | [fabric-26.1.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.1/xaero-world-map-earth-fabric-26.1.2-0.1.1.jar) |
 | 26.1.2 | NeoForge | 25 | [neoforge-26.1.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.1/xaero-world-map-earth-neoforge-26.1.2-0.1.1.jar) |
 | 26.2 | NeoForge | 25 | [neoforge-26.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.1/xaero-world-map-earth-neoforge-26.2-0.1.1.jar) |
+| 26.2 | Fabric | 25 | [fabric-26.2](https://www.curseforge.com/minecraft/mc-mods/xaeros-world-map-earth/files) |
 
 ## Features
 
@@ -71,7 +72,7 @@ Use the Java version listed above and a matching [KltytonUI](https://github.com/
 
 ```mermaid
 flowchart LR
-    Common[Common map and UI state] --> Targets[Nine independent targets]
+    Common[Common map and UI state] --> Targets[Ten independent targets]
     Versions[Minecraft API adapters] --> Targets
     Loaders[Loader integration] --> Targets
     Root[Root Gradle tasks] --> Targets
@@ -91,7 +92,7 @@ On Linux or macOS, use `./gradlew` with the same arguments. Release JARs are wri
 
 The root Gradle project provides `listTargets`, `select_<target>`, `build_<target>`, `assemble_<target>` and `assembleAllTargets`. Task suffixes replace hyphens and dots with underscores, for example `assemble_neoforge_26_2`. Pass each local UI JAR as `-PkuiJar.<target>=<path>` when invoking the root controller. `verifyAllDistributions` inspects recorded release JARs without rebuilding them.
 
-Import the root project in IDEA with the KltytonTemple extension to link all nine independent targets. The selected default target affects root task aliases only.
+Import the root project in IDEA with the KltytonTemple extension to link all ten independent targets. The selected default target affects root task aliases only.
 
 For IDE imports and task buttons, store the matching paths in the untracked root file `temple.local.properties`, using keys such as `kuiJar.neoforge-26.2`. Command-line `-PkuiJar` values take precedence.
 

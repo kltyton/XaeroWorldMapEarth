@@ -9,7 +9,6 @@ import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import io.github.kltyton.xaeroearth.client.chunkmap.MapCamera;
-import io.github.kltyton.kltytonui.neoforge.RenderService;
 import io.github.kltyton.kltytonui.render.OutputTargets;
 import java.util.Collection;
 import net.minecraft.client.Minecraft;
@@ -152,7 +151,7 @@ public final class MapEntityLayer {
                 SkullBlockRenderer.submitSkull(0, pose, nodes, LightCoordsUtil.FULL_BRIGHT, playerHead(minecraft, avatar.showHat),
                         SkullBlockRenderer.getPlayerSkinRenderType(avatar.skin.body().texturePath()), 0, null);
             }
-            RenderService.INSTANCE.dispatchNativeFeatures(nodes);
+            NativeEntityFeatures.dispatch(nodes);
         } finally {
             RenderSystem.outputColorTextureOverride = previousColor;
             RenderSystem.outputDepthTextureOverride = previousDepth;

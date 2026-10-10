@@ -5,16 +5,14 @@ import io.github.kltyton.xaeroearth.client.ui.NativeMapSkin;
 import io.github.kltyton.xaeroearth.client.ui.NativeMapTerrain;
 import io.github.kltyton.xaeroearth.client.chunkmap.ActiveMapResources;
 import io.github.kltyton.xaeroearth.client.chunkmap.NativeTileSession;
+import io.github.kltyton.xaeroearth.client.reload.ResourceReloadRegistration;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.server.packs.PackType;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.Screens;
-import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
-import net.fabricmc.fabric.api.resource.IdentifiableResourceReloadListener;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.contents.TranslatableContents;
@@ -73,10 +71,7 @@ public final class EarthClient extends EarthClientState {
     private static void onStopping() { stop(); }
 
     private static void registerReloadListener() {
-        ResourceManagerHelper.get(PackType.CLIENT_RESOURCES).registerReloadListener(new IdentifiableResourceReloadListener() {
-            @Override public Identifier getFabricId() {
-                return Identifier.fromNamespaceAndPath("xaeroearth", "map_resources");
-            }
+        ResourceReloadRegistration.register(Identifier.fromNamespaceAndPath("xaeroearth", "map_resources"), new PreparableReloadListener() {
             @Override public CompletableFuture<Void> reload(SharedState state, Executor background, PreparationBarrier barrier, Executor game) {
                 return CompletableFuture.<Void>completedFuture(null).thenCompose(barrier::wait).thenRunAsync(() -> {
                     NativeMapSkin.close(); NativeMapTerrain.hide();

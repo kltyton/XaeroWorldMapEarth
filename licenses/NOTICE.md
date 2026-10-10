@@ -12,6 +12,11 @@ source and build materials for the bundled nine-target library are available at:
 
 https://github.com/kltyton/KltytonUI/tree/1d64ed14830ae1809be4e14ddc97cba8f7caa76b
 
+The Fabric 26.2 library's corresponding source and target build definitions are
+available at:
+
+https://github.com/kltyton/KltytonUI/tree/20bb8dc6a7b4fce076dcb038be10a3261ced6b6e
+
 Upstream: https://github.com/Tower-of-Sighs/AUI
 
 The modified library provides basic chunk mesh baking and GPU drawing, the

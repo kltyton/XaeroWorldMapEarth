@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "xaeroearth",
+  "version": "${mod_version}",
+  "name": "Xaero's World Map: Earth",
+  "description": "Native 3D terrain views and an Ore-style interface for Xaero's World Map.",
+  "authors": ["kltyton"],
+  "contact": {"sources": "https://github.com/kltyton/XaeroWorldMapEarth"},
+  "icon": "assets/xaeroearth/branding/icon.png",
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "io.github.kltyton.xaeroearth.fabric.EarthClient"
+    ]
+  },
+  "accessWidener": "xaeroearth.accesswidener",
+  "mixins": [
+    "xaeroearth.mixins.json"
+  ]
+}
