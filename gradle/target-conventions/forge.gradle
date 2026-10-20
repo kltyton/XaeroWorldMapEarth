@@ -1,11 +1,13 @@
 apply from: '../../gradle/target-conventions/base.gradle'
-apply from: '../../gradle/target-conventions/publish.gradle'
 
 legacyForge {
     accessTransformers { file('src/main/resources/META-INF/accesstransformer.cfg') }
     version = "${minecraft_version}-${loader_version}"
     mods {
-        xaeroearth { sourceSet(sourceSets.main) }
+        xaeroearth {
+            sourceSet(sourceSets.main)
+            sourceSet(project(':common').sourceSets.main)
+        }
     }
 }
 
@@ -14,3 +16,5 @@ dependencies {
     implementation "xaero.map:xaeroworldmap-forge-${xaero_mc_version}:${xaero_version}:dev"
     if (project.hasProperty('kuiJar')) compileOnly files(file(project.property('kuiJar')))
 }
+
+apply from: '../../gradle/target-conventions/publish.gradle'

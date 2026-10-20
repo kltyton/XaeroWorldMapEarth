@@ -20,6 +20,38 @@ abstract class EarthClientState {
     protected static final int MODEL_THREADS = net.minecraft.util.Mth.clamp(Runtime.getRuntime().availableProcessors() / 2, 2, 4);
     protected static final java.util.Set<Screen> themedScreens = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
 
+    @FunctionalInterface
+    protected interface ViewButtonFactory {
+        Button create(net.minecraft.network.chat.Component label, int x, int y, Runnable action);
+    }
+
+    protected static void initializeMap(Screen screen, java.util.function.BiConsumer<GuiMap, Button> add,
+                                        ViewButtonFactory factory) {
+        if (!(screen instanceof GuiMap map)) return;
+        themedScreens.add(map);
+        for (var view : EarthPreferences.View.values()) {
+            String key = "xaeroearth.view." + view.name().toLowerCase(java.util.Locale.ROOT);
+            Button selector = factory.create(ClientScreen.viewLabel(key), map.width / 2 - 96 + view.ordinal() * 64,
+                    Math.max(4, map.height - 44), () -> {
+                        EarthPreferences.VIEW.set(view);
+                        EarthPreferences.save();
+                    });
+            selector.visible = EarthPreferences.ENABLED.get();
+            add.accept(map, selector);
+        }
+        if (EarthPreferences.ENABLED.get()) { themedMap = map; NativeMapSkin.open(map); }
+    }
+
+    protected static void reloadResources(net.minecraft.server.packs.resources.ResourceManager manager) {
+        NativeMapSkin.close(); NativeMapTerrain.hide();
+        closeModels();
+        if (resources != null) { resources.close(); resources = null; }
+        if (EarthPreferences.ENABLED.get()) {
+            warmResources(manager);
+            NativeMapSkin.prewarm();
+        }
+    }
+
     protected static void tick(boolean releaseOnWorldChange) {
         Minecraft minecraft = Minecraft.getInstance();
         if (level != minecraft.level) {

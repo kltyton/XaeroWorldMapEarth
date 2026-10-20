@@ -26,7 +26,7 @@ dependencies {
     compileOnly 'io.github.llamalad7:mixinextras-common:0.4.1'
     annotationProcessor 'io.github.llamalad7:mixinextras-common:0.4.1'
     jarJar(implementation('io.github.llamalad7:mixinextras-forge:0.4.1')) {
-        version { strictly '[0.4.1,0.5)'; prefer '0.4.1' }
+        version { strictly '[0.4.1,)'; prefer '0.4.1' }
     }
     jarJar(implementation('dev.latvian.mods:rhino-forge:2001.2.3-build.10')) {
         version { strictly '[2001.2.3-build.10]'; prefer '2001.2.3-build.10' }

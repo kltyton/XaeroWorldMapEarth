@@ -14,16 +14,20 @@ extensions.configure<UserDevExtension> {
     runs {
         configureEach {
             workingDirectory(file("run"))
-            mods.create(mod_id) { source(sourceSets.main.get()) }
+            mods.create(mod_id) {
+                source(sourceSets.main.get())
+                source(project(":common").extensions.getByType<SourceSetContainer>().named("main").get())
+            }
         }
         create("client")
         create("server") { args("--nogui") }
         create("data") {
             args("--mod", mod_id, "--all", "--output", file("src/generated/resources").absolutePath,
-                    "--existing", file("src/main/resources").absolutePath)
+                    *(project.extra["templeDatagenExistingArgs"] as Array<String>))
         }
     }
 }
 dependencies { add("minecraft", "net.minecraftforge:forge:$minecraft_version-$loader_version") }
 tasks.named("jar") { finalizedBy("reobfJar") }
+apply(from = file("../../gradle/target-conventions/earth.gradle.kts"))
 apply(from = file("../../gradle/target-conventions/publish.gradle.kts"))

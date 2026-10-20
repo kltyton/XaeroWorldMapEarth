@@ -49,7 +49,7 @@ public final class NativeTileSession implements AutoCloseable, ChunkTileSource {
     private final CompletableFuture<NativeTileCache> cache;
     private final Map<ChunkTiles.Tile, Entry> entries = new HashMap<>();
     private final TreeSet<Pending> pending = new TreeSet<>(Comparator.comparingLong(Pending::due).thenComparingInt(Pending::rank));
-    private record StoredTile(NativeTileCache cache, String key, int[] heights, byte[] model) { }
+    private record StoredTile(NativeTileCache cache, String key, int[] heights, byte[] model, int mask) { }
     private final ConcurrentHashMap<ChunkTiles.Tile, StoredTile> ready = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<ChunkTiles.Tile, Long> versions = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -154,7 +154,7 @@ public final class NativeTileSession implements AutoCloseable, ChunkTileSource {
         if (options.persistentCache() && !entry.preloadTried) {
             entry.preloadTried = true;
             cache.thenApplyAsync(disk -> disk.readLatest(tile, cut).map(hit -> new StoredTile(
-                    disk, hit.key(), hit.tile().heights(), encode(hit.tile().model()))).orElse(null), conversion)
+                    disk, hit.key(), hit.tile().heights(), encode(hit.tile().model()), availableMask(hit.tile().heights()))).orElse(null), conversion)
                     .thenAccept(hit -> Minecraft.getInstance().execute(() -> {
                         if (hit != null && !cancelled.getAsBoolean() && entry.sequence == sequence
                                 && entries.get(tile) == entry && !ready.containsKey(tile)) putReady(tile, hit);
@@ -174,7 +174,7 @@ public final class NativeTileSession implements AutoCloseable, ChunkTileSource {
                                 ? new NativeTileCache.Hit(prepared.key, prepared.hit)
                                 : prepared.cache.commit(prepared.key, prepared.hit, cut);
                         return CompletableFuture.completedFuture(new StoredTile(prepared.cache, chosen.key(),
-                                chosen.tile().heights(), encode(chosen.tile().model())));
+                                chosen.tile().heights(), encode(chosen.tile().model()), availableMask(chosen.tile().heights())));
                     }
                     return resources.renderer().thenCompose(renderer -> renderer.renderNativeTile(
                                     prepared.capture.snapshot(), tile, prepared.capture.knownColumns(), cancelled))
@@ -184,7 +184,8 @@ public final class NativeTileSession implements AutoCloseable, ChunkTileSource {
                                         ? new NativeTileCache.Hit(prepared.key, rendered)
                                         : prepared.cache.commit(prepared.key, rendered, cut);
                                 synchronized (this) { bakedTiles++; }
-                                return new StoredTile(prepared.cache, chosen.key(), chosen.tile().heights(), encode(chosen.tile().model()));
+                                return new StoredTile(prepared.cache, chosen.key(), chosen.tile().heights(),
+                                        encode(chosen.tile().model()), availableMask(chosen.tile().heights()));
                             }, conversion);
                 });
         entry.work = work;
@@ -193,7 +194,7 @@ public final class NativeTileSession implements AutoCloseable, ChunkTileSource {
             if (closed.get() || entry.sequence != sequence || obsolete.get() || entries.get(tile) != entry) return;
             entry.work = null;
             boolean changedDuringWork = entry.dirty;
-            boolean retry = failure != null || result == null || availableMask(result.heights()) != 15;
+            boolean retry = failure != null || result == null || result.mask() != 15;
             if (failure != null) {
                 if (!(failure instanceof java.util.concurrent.CancellationException))
                     LogUtils.getLogger().debug("Native model tile {},{} unavailable: {}", tile.x(), tile.z(), failure.toString());
@@ -214,13 +215,13 @@ public final class NativeTileSession implements AutoCloseable, ChunkTileSource {
 
     private void putReady(ChunkTiles.Tile tile, StoredTile result) {
             var existing = ready.get(tile);
-            if (existing != null && (availableMask(existing.heights()) & availableMask(result.heights())) == availableMask(result.heights())
-                    && availableMask(existing.heights()) != availableMask(result.heights())) return;
+            if (existing != null && (existing.mask() & result.mask()) == result.mask()
+                    && existing.mask() != result.mask()) return;
             if (existing != null && existing.key().equals(result.key())) return;
             var previous = ready.put(tile, result);
             if (previous != null) residentBytes -= previous.model().length + 4096L;
             residentBytes += result.model().length + 4096L;
-            if (availableMask(result.heights()) != 0 && result.model().length > 0) versions.put(tile, revision.incrementAndGet());
+            if (result.mask() != 0 && result.model().length > 0) versions.put(tile, revision.incrementAndGet());
             else { versions.remove(tile); revision.incrementAndGet(); }
             while (residentBytes > MEMORY_LIMIT) {
                 var farthest = ready.entrySet().stream().filter(value -> value.getValue().model().length > 0)
@@ -230,7 +231,7 @@ public final class NativeTileSession implements AutoCloseable, ChunkTileSource {
                 if (farthest == null) break;
                 var stored = farthest.getValue();
                 if (stored.cache() != null) {
-                    ready.put(farthest.getKey(), new StoredTile(stored.cache(), stored.key(), stored.heights(), new byte[0]));
+                    ready.put(farthest.getKey(), new StoredTile(stored.cache(), stored.key(), stored.heights(), new byte[0], stored.mask()));
                     residentBytes -= stored.model().length;
                 } else {
                     ready.remove(farthest.getKey()); versions.remove(farthest.getKey());
@@ -254,7 +255,7 @@ public final class NativeTileSession implements AutoCloseable, ChunkTileSource {
     }
 
     public String contentKey(ChunkTiles.Tile tile) { var stored = ready.get(tile); return stored == null ? null : stored.key(); }
-    public int availableMask(ChunkTiles.Tile tile) { var stored = ready.get(tile); return stored == null ? 0 : availableMask(stored.heights()); }
+    public int availableMask(ChunkTiles.Tile tile) { var stored = ready.get(tile); return stored == null ? 0 : stored.mask(); }
 
     public byte[] compressedModel(ChunkTiles.Tile tile, String expectedKey) {
         var stored = ready.get(tile);

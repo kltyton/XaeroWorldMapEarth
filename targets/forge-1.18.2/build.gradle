@@ -27,7 +27,7 @@ dependencies {
     compileOnly 'io.github.llamalad7:mixinextras-common:0.4.1'
     annotationProcessor 'io.github.llamalad7:mixinextras-common:0.4.1'
     jarJar(implementation('io.github.llamalad7:mixinextras-forge:0.4.1')) {
-        version { strictly '[0.4.1,0.5)'; prefer '0.4.1' }
+        version { strictly '[0.4.1,)'; prefer '0.4.1' }
     }
     jarJar(implementation('maven.modrinth:rhino:N59eFKIq')) {
         version { strictly '[N59eFKIq]'; prefer 'N59eFKIq' }

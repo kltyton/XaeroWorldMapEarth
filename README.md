@@ -22,20 +22,20 @@ Download the JAR for your Minecraft version and loader, then place it in your cl
 
 KltytonUI 1.2.7 and Rhino are bundled in the release JARs.
 
-### Version 0.1.1
+### Version 0.1.2
 
 | Minecraft | Loader | Java | Download |
 | --- | --- | --- | --- |
-| 1.18.2 | Forge | 17 | [forge-1.18.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.1/xaero-world-map-earth-forge-1.18.2-0.1.1.jar) |
-| 1.19.2 | Forge | 17 | [forge-1.19.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.1/xaero-world-map-earth-forge-1.19.2-0.1.1.jar) |
-| 1.20.1 | Forge | 17 | [forge-1.20.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.1/xaero-world-map-earth-forge-1.20.1-0.1.1.jar) |
-| 1.20.1 | Fabric | 17 | [fabric-1.20.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.1/xaero-world-map-earth-fabric-1.20.1-0.1.1.jar) |
-| 1.21.1 | Fabric | 21 | [fabric-1.21.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.1/xaero-world-map-earth-fabric-1.21.1-0.1.1.jar) |
-| 1.21.1 | NeoForge | 21 | [neoforge-1.21.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.1/xaero-world-map-earth-neoforge-1.21.1-0.1.1.jar) |
-| 26.1.2 | Fabric | 25 | [fabric-26.1.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.1/xaero-world-map-earth-fabric-26.1.2-0.1.1.jar) |
-| 26.1.2 | NeoForge | 25 | [neoforge-26.1.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.1/xaero-world-map-earth-neoforge-26.1.2-0.1.1.jar) |
-| 26.2 | NeoForge | 25 | [neoforge-26.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.1/xaero-world-map-earth-neoforge-26.2-0.1.1.jar) |
-| 26.2 | Fabric | 25 | [fabric-26.2](https://www.curseforge.com/minecraft/mc-mods/xaeros-world-map-earth/files) |
+| 1.18.2 | Forge | 17 | [forge-1.18.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.2/xaero-world-map-earth-forge-1.18.2-0.1.2.jar) |
+| 1.19.2 | Forge | 17 | [forge-1.19.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.2/xaero-world-map-earth-forge-1.19.2-0.1.2.jar) |
+| 1.20.1 | Forge | 17 | [forge-1.20.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.2/xaero-world-map-earth-forge-1.20.1-0.1.2.jar) |
+| 1.20.1 | Fabric | 17 | [fabric-1.20.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.2/xaero-world-map-earth-fabric-1.20.1-0.1.2.jar) |
+| 1.21.1 | Fabric | 21 | [fabric-1.21.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.2/xaero-world-map-earth-fabric-1.21.1-0.1.2.jar) |
+| 1.21.1 | NeoForge | 21 | [neoforge-1.21.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.2/xaero-world-map-earth-neoforge-1.21.1-0.1.2.jar) |
+| 26.1.2 | Fabric | 25 | [fabric-26.1.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.2/xaero-world-map-earth-fabric-26.1.2-0.1.2.jar) |
+| 26.1.2 | NeoForge | 25 | [neoforge-26.1.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.2/xaero-world-map-earth-neoforge-26.1.2-0.1.2.jar) |
+| 26.2 | NeoForge | 25 | [neoforge-26.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.2/xaero-world-map-earth-neoforge-26.2-0.1.2.jar) |
+| 26.2 | Fabric | 25 | [fabric-26.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.2/xaero-world-map-earth-fabric-26.2-0.1.2.jar) |
 
 ## Features
 
@@ -66,15 +66,16 @@ KltytonUI 1.2.7 and Rhino are bundled in the release JARs.
 
 ## Building from source
 
-The project uses KltytonTemple. Each directory under `targets/` is an independent Gradle project with its own Wrapper and Java toolchain. Shared map state, cameras, tile processing and UI state live in `common/`; Minecraft API and loader integrations live in `versions/` and `loaders/`. Each target selects its layers through `shared_sources`.
+The project uses [KltytonTemple 1.4.0](https://github.com/kltyton/KltytonTemple/tree/3d95621f9530deff0ac2cbffdf7828c2f3e8020b). Each directory under `targets/` is an independent Gradle project with its own Wrapper, Java toolchain and `:common` module. Shared map state, cameras, tile processing, column encoding and UI state live in `common/src/main`; native Minecraft and loader API adapters live in `common/src/compat`. Each target selects its compatibility profiles through `temple_compatibility`.
 
 Use the Java version listed above and a matching [KltytonUI](https://github.com/kltyton/KltytonUI) JAR with the basic chunk mesh upload and drawing API.
 
 ```mermaid
 flowchart LR
-    Common[Common map and UI state] --> Targets[Ten independent targets]
-    Versions[Minecraft API adapters] --> Targets
-    Loaders[Loader integration] --> Targets
+    Main[common/src/main] --> Common[:common module]
+    Compat[common/src/compat] --> Common
+    SDK[Target Minecraft and Loader SDK] --> Common
+    Common --> Targets[Ten independent targets]
     Root[Root Gradle tasks] --> Targets
     Targets --> Jars[Release JARs]
 ```
@@ -92,7 +93,9 @@ On Linux or macOS, use `./gradlew` with the same arguments. Release JARs are wri
 
 The root Gradle project provides `listTargets`, `select_<target>`, `build_<target>`, `assemble_<target>` and `assembleAllTargets`. Task suffixes replace hyphens and dots with underscores, for example `assemble_neoforge_26_2`. Pass each local UI JAR as `-PkuiJar.<target>=<path>` when invoking the root controller. `verifyAllDistributions` inspects recorded release JARs without rebuilding them.
 
-Import the root project in IDEA with the KltytonTemple extension to link all ten independent targets. The selected default target affects root task aliases only.
+All target tasks beginning with `publish` verify the production JAR before publishing. The project keeps its KUI path forwarding, client-only metadata and bundled-library checks. `createProject` offers Groovy and Kotlin DSL; this project continues to use `temple_build_dsl=groovy`.
+
+Import the root project in IDEA with the KltytonTemple extension to link all ten independent targets. Selection controls the root task aliases and the SDK used to edit `common`. Reload the Gradle model after changing the selection. The selected target owns the physical `common` source roots; the other targets keep independent build contexts under `common/.gradle/contexts`.
 
 For IDE imports and task buttons, store the matching paths in the untracked root file `temple.local.properties`, using keys such as `kuiJar.neoforge-26.2`. Command-line `-PkuiJar` values take precedence.
 

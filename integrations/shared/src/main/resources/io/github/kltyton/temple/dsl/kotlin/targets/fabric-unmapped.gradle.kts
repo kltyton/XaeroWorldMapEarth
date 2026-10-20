@@ -1,4 +1,5 @@
 import net.fabricmc.loom.api.fabricapi.FabricApiExtension
+import net.fabricmc.loom.api.LoomGradleExtensionAPI
 
 plugins {
     id("net.fabricmc.fabric-loom")
@@ -20,4 +21,10 @@ extensions.getByType<FabricApiExtension>().configureDataGeneration {
     outputDirectory.set(file("src/generated/resources"))
     client.set(true)
 }
+extensions.getByType<LoomGradleExtensionAPI>().accessWidenerPath.set(file("src/main/resources/xaeroearth.accesswidener"))
+apply(from = file("../../gradle/target-conventions/earth.gradle.kts"))
 apply(from = file("../../gradle/target-conventions/publish.gradle.kts"))
+extensions.getByType<net.fabricmc.loom.api.LoomGradleExtensionAPI>().mods.create(mod_id) {
+    sourceSet(sourceSets.main.get())
+    sourceSet(project(":common").extensions.getByType<SourceSetContainer>().named("main").get())
+}

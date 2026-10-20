@@ -4,7 +4,10 @@ apply from: '../../gradle/target-conventions/publish.gradle'
 neoForge {
     version = loader_version
     mods {
-        xaeroearth { sourceSet(sourceSets.main) }
+        xaeroearth {
+            sourceSet(sourceSets.main)
+            sourceSet(project(':common').sourceSets.main)
+        }
     }
 }
 

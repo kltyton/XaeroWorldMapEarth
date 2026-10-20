@@ -42,6 +42,7 @@ val verifyDistribution = tasks.register("verifyDistribution") {
     }
 }
 tasks.named("build") { dependsOn(verifyDistribution) }
+tasks.configureEach { if (name.startsWith("publish")) dependsOn(verifyDistribution) }
 val platform = providers.gradleProperty("publish_platform").getOrElse("none")
 require(platform in setOf("none", "modrinth", "curseforge", "both", "maven")) { "Unknown publish_platform: $platform" }
 // The plugin instance belongs to the target script's classloader.

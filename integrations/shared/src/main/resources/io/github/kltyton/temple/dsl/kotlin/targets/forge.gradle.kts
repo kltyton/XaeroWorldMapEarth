@@ -1,4 +1,5 @@
 import net.neoforged.moddevgradle.legacyforge.dsl.LegacyForgeExtension
+import net.neoforged.moddevgradle.legacyforge.dsl.MixinExtension
 
 plugins {
     `java-library`
@@ -11,6 +12,7 @@ val loader_version: String by project
 val mod_id: String by project
 extensions.configure<LegacyForgeExtension> {
     version = "$minecraft_version-$loader_version"
+    accessTransformers.from(file("src/main/resources/META-INF/accesstransformer.cfg"))
     validateAccessTransformers.set(true)
     runs {
         create("client") { client() }
@@ -18,9 +20,17 @@ extensions.configure<LegacyForgeExtension> {
         create("data") {
             data()
             programArguments.addAll("--mod", mod_id, "--all", "--output", file("src/generated/resources").absolutePath,
-                    "--existing", file("src/main/resources").absolutePath)
+                    *(project.extra["templeDatagenExistingArgs"] as Array<String>))
         }
     }
-    mods.create(mod_id) { sourceSet(sourceSets.main.get()) }
+    mods.create(mod_id) {
+        sourceSet(sourceSets.main.get())
+        sourceSet(project(":common").extensions.getByType<SourceSetContainer>().named("main").get())
+    }
 }
+apply(from = file("../../gradle/target-conventions/earth.gradle.kts"))
 apply(from = file("../../gradle/target-conventions/publish.gradle.kts"))
+extensions.configure<MixinExtension> {
+    add(sourceSets.main.get(), "xaeroearth.refmap.json")
+    config("xaeroearth.mixins.json")
+}

@@ -11,14 +11,21 @@ val java_version: String by project
 extensions.configure<NeoForgeExtension> {
     version = loader_version
     runs {
-        create("client") { client() }
+        create("client") {
+            client()
+            gameDirectory.set(if (project.hasProperty("earthRunDirectory")) file(project.property("earthRunDirectory")) else file("run"))
+        }
         create("server") { server(); programArgument("--nogui") }
         create("data") {
             if (java_version.toInt() >= 25) clientData() else data()
             programArguments.addAll("--mod", mod_id, "--all", "--output", file("src/generated/resources").absolutePath,
-                    "--existing", file("src/main/resources").absolutePath)
+                    *(project.extra["templeDatagenExistingArgs"] as Array<String>))
         }
     }
-    mods.create(mod_id) { sourceSet(project.extensions.getByType<SourceSetContainer>().getByName("main")) }
+    mods.create(mod_id) {
+        sourceSet(project.extensions.getByType<SourceSetContainer>().getByName("main"))
+        sourceSet(project(":common").extensions.getByType<SourceSetContainer>().getByName("main"))
+    }
 }
+apply(from = file("../../gradle/target-conventions/earth.gradle.kts"))
 apply(from = file("../../gradle/target-conventions/publish.gradle.kts"))

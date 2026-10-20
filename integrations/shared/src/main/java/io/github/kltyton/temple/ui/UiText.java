@@ -37,6 +37,7 @@ public final class UiText {
             Map.entry("version", new String[]{"项目版本", "Project version"}),
             Map.entry("license", new String[]{"许可证", "License"}),
             Map.entry("description", new String[]{"描述", "Description"}),
+            Map.entry("singleLineDescription", new String[]{"描述不能换行。", "Description must be a single line."}),
             Map.entry("directory", new String[]{"新工程目录", "New project directory"}),
             Map.entry("browse", new String[]{"浏览…", "Browse…"}),
             Map.entry("added", new String[]{"目标已添加。新版本的游戏代码仍需按对应 API 适配。", "Targets added. Adapt game code to the selected version APIs."}),

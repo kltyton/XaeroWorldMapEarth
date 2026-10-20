@@ -1,6 +1,15 @@
 apply from: '../../gradle/target-conventions/base.gradle'
 apply from: '../../gradle/target-conventions/publish.gradle'
 
+loom {
+    mods {
+        xaeroearth {
+            sourceSet sourceSets.main
+            sourceSet project(':common').sourceSets.main
+        }
+    }
+}
+
 dependencies {
     minecraft "com.mojang:minecraft:${minecraft_version}"
     if (!minecraft_version.startsWith('26.')) {
