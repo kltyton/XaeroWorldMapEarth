@@ -7,6 +7,8 @@ public final class UiText {
     private static final Map<String, String[]> WORDS = Map.ofEntries(
             Map.entry("language", new String[]{"界面语言", "Language"}),
             Map.entry("buildDsl", new String[]{"Gradle 脚本语言", "Gradle script language"}),
+            Map.entry("defaultTarget", new String[]{"默认编辑目标", "Default editing target"}),
+            Map.entry("defaultTargetHint", new String[]{"首次导入时 common 使用的 Minecraft / 加载器环境，也是根任务的默认目标。", "Minecraft / loader environment for common on first import, and the default for root tasks."}),
             Map.entry("minecraft", new String[]{"Minecraft 版本", "Minecraft version"}),
             Map.entry("loader", new String[]{"加载器", "Loader"}),
             Map.entry("loaderVersion", new String[]{"加载器版本", "Loader version"}),

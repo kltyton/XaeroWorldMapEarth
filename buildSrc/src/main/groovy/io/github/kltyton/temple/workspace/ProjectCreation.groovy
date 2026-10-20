@@ -3,7 +3,8 @@ package io.github.kltyton.temple.workspace
 import java.nio.file.Path
 
 final class ProjectCreation {
-    static File create(File template, File destination, Properties identity, Collection<String> chosen) {
+    static File create(File template, File destination, Properties identity, Collection<String> chosen,
+                       List<Map<String, String>> plans = []) {
         File output = destination.canonicalFile
         Path base = template.canonicalFile.toPath()
         if (output.exists() || output.toPath().startsWith(base)) {
@@ -17,6 +18,14 @@ final class ProjectCreation {
         List<TargetDefinition> all = ProjectFiles.targets(template)
         Set<String> selected = chosen.empty ? all.collect { it.id } as Set : chosen as Set
         if (!all.collect { it.id }.containsAll(selected)) { throw new IllegalArgumentException('Unknown target selection') }
+        String preferred = identity.getProperty('temple_default_target')
+        String initialTarget = plans.empty ? (preferred ?: selected.first()) : TargetPlan.defaultTarget(plans, preferred)
+        if (plans.empty && !selected.contains(initialTarget)) {
+            throw new IllegalArgumentException("Default editing target is not selected: ${initialTarget}")
+        }
+        if (!plans.empty && (plans.collect { it.blueprint } as Set) != selected) {
+            throw new IllegalArgumentException('Target plan does not match selected blueprints')
+        }
         Properties old = ProjectFiles.read(new File(template, 'gradle.properties'))
         String oldPackage = old.getProperty('mod_java_package', old.getProperty('mod_group_id'))
         String newPackage = identity.getProperty('mod_java_package', identity.getProperty('mod_group_id'))
@@ -44,7 +53,7 @@ final class ProjectCreation {
         }
         old.remove('publish_curseforge_project_id')
         old.remove('publish_modrinth_project_id')
-        old.setProperty('temple_default_target', selected.first())
+        old.setProperty('temple_default_target', initialTarget)
         ProjectFiles.write(new File(output, 'gradle.properties'), old)
         TargetPlan.BLUEPRINTS.each { name ->
             File blueprint = new File(template, "targets/${name}")
@@ -57,8 +66,9 @@ final class ProjectCreation {
         }
         File state = new File(output, '.temple/active-target')
         state.parentFile.mkdirs()
-        state.setText(selected.first() + '\n', 'UTF-8')
+        state.setText(initialTarget + '\n', 'UTF-8')
         BuildScripts.createProject(output.toPath())
+        if (!plans.empty) TargetPlan.apply(output.toPath(), plans, true, initialTarget)
         output
     }
 

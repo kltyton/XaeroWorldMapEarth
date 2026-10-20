@@ -1,0 +1,29 @@
+import groovy.json.JsonOutput
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+
+def commonRoot = project.buildFile.canonicalFile.parentFile
+def templeRoot = commonRoot.parentFile
+def identity = new Properties()
+new File(templeRoot, 'gradle.properties').withReader('UTF-8') { identity.load(it) }
+def selectionFile = new File(templeRoot, '.temple/active-target')
+def selection = selectionFile.isFile() ? selectionFile.getText('UTF-8').trim() : identity.getProperty('temple_default_target')
+def target = rootProject.projectDir.name
+def context = new File(commonRoot, ".gradle/contexts/${target}").toPath()
+Files.createDirectories(context)
+def destination = context.resolve('ide-sources.json')
+def content = JsonOutput.toJson([schema: 1, target: target, selection: selection,
+        targetDirectory: rootProject.projectDir.canonicalPath, projectDirectory: project.projectDir.canonicalPath,
+        javaRoots: project.ext.templeSourceDirectories.collect { it.canonicalPath },
+        resourceRoots: project.ext.templeResourceDirectories.collect { it.canonicalPath }])
+if (!Files.isRegularFile(destination) || Files.readString(destination) != content) {
+    def pending = Files.createTempFile(context, 'ide-sources-', '.tmp')
+    try {
+        Files.writeString(pending, content)
+        try { Files.move(pending, destination, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING) }
+        catch (AtomicMoveNotSupportedException ignored) {
+            Files.move(pending, destination, StandardCopyOption.REPLACE_EXISTING)
+        }
+    } finally { Files.deleteIfExists(pending) }
+}

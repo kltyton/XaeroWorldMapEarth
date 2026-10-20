@@ -66,7 +66,7 @@ KltytonUI 1.2.7 and Rhino are bundled in the release JARs.
 
 ## Building from source
 
-The project uses [KltytonTemple 1.4.0](https://github.com/kltyton/KltytonTemple/tree/3d95621f9530deff0ac2cbffdf7828c2f3e8020b). Each directory under `targets/` is an independent Gradle project with its own Wrapper, Java toolchain and `:common` module. Shared map state, cameras, tile processing, column encoding and UI state live in `common/src/main`; native Minecraft and loader API adapters live in `common/src/compat`. Each target selects its compatibility profiles through `temple_compatibility`.
+The project uses [KltytonTemple 1.5.0](https://github.com/kltyton/KltytonTemple/tree/34c90c76816573ebf7758403d2064ab0c24799ac). Each directory under `targets/` is an independent Gradle project with its own Wrapper, Java toolchain and `:common` module. Shared map state, cameras, tile processing, column encoding and UI state live in `common/src/main`; native Minecraft and loader API adapters live in `common/src/compat`. Each target selects its compatibility profiles through `temple_compatibility`.
 
 Use the Java version listed above and a matching [KltytonUI](https://github.com/kltyton/KltytonUI) JAR with the basic chunk mesh upload and drawing API.
 
@@ -76,6 +76,8 @@ flowchart LR
     Compat[common/src/compat] --> Common
     SDK[Target Minecraft and Loader SDK] --> Common
     Common --> Targets[Ten independent targets]
+    Common --> Models[IDE source root models]
+    Models --> IDE[Matching source root SDKs]
     Root[Root Gradle tasks] --> Targets
     Targets --> Jars[Release JARs]
 ```
@@ -95,7 +97,9 @@ The root Gradle project provides `listTargets`, `select_<target>`, `build_<targe
 
 All target tasks beginning with `publish` verify the production JAR before publishing. The project keeps its KUI path forwarding, client-only metadata and bundled-library checks. `createProject` offers Groovy and Kotlin DSL; this project continues to use `temple_build_dsl=groovy`.
 
-Import the root project in IDEA with the KltytonTemple extension to link all ten independent targets. Selection controls the root task aliases and the SDK used to edit `common`. Reload the Gradle model after changing the selection. The selected target owns the physical `common` source roots; the other targets keep independent build contexts under `common/.gradle/contexts`.
+Import the root project in IDEA with the KltytonTemple extension to link all ten independent targets. Selection controls the root task aliases and the SDK used to edit shared `common` sources. With extension 1.5.0, reload all target Gradle models to assign the other compatibility directories to matching SDK modules. Each physical source or resource directory has one owner. The source root models use the actual target directory IDs and remain under `common/.gradle/contexts`.
+
+Both project creation forms offer a default editing target from the selected matrix. Existing projects keep their root `temple_default_target` and any local `.temple/active-target` selection.
 
 For IDE imports and task buttons, store the matching paths in the untracked root file `temple.local.properties`, using keys such as `kuiJar.neoforge-26.2`. Command-line `-PkuiJar` values take precedence.
 

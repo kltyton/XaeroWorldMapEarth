@@ -67,6 +67,7 @@ final class MinecraftTemplates {
                  derives:[parents:['PROJECT_NAME'], method:'replace',
                           parameters:[regex:'[^a-z0-9_]+', replacement:'_', lowercase:true, maxLength:64]]],
                 [name:'MOD_NAME', type:'string', label:'Mod 名称 / Mod name', inheritFrom:'PROJECT_NAME', default:'My Mod', visible:false],
+                [name:'DEFAULT_TARGET', type:'string', default:'', visible:false],
                 [name:'TARGET_PLAN', type:'kltyton_targets', label:'Minecraft / Loader', parameters:[layout:'split']],
                 [name:'AUTHORS', type:'string', label:'作者 / Authors', default:'kltyton', visible:false],
                 [name:'LICENSE', type:'string', label:'许可证 / License', default:'MIT', visible:false],

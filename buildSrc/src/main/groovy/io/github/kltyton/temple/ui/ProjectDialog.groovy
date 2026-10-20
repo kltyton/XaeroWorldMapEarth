@@ -42,6 +42,7 @@ final class ProjectDialog {
         TargetSelectionPanel targets = new TargetSelectionPanel(
                 { text -> new JsonSlurper().parseText(text) } as java.util.function.Function,
                 [], { selections -> } as java.util.function.Consumer)
+        targets.enableDefaultTargetSelection({ target -> } as java.util.function.Consumer)
         def translate = {
             labels.each { name, label -> label.text = name == 'mod_id' ? 'Mod ID' : targets.messages().get(keys[name]) }
             browse.text = targets.messages().get('browse')
@@ -65,10 +66,10 @@ final class ProjectDialog {
                 Properties identity = new Properties()
                 fields.findAll { it.key != 'directory' }.each { name, field -> identity.setProperty(name, field.text.trim()) }
                 identity.setProperty('temple_build_dsl', dsl.selectedItem.id)
+                identity.setProperty('temple_default_target', targets.defaultTarget())
                 if (!fields.directory.text.trim()) { throw new IllegalArgumentException(targets.messages().get('chooseDirectory')) }
                 File created = ProjectCreation.create(root, new File(fields.directory.text.trim()), identity,
-                        selected.collect { it.blueprint }.unique())
-                TargetPlan.apply(created.toPath(), selected, true)
+                        selected.collect { it.blueprint }.unique(), selected)
                 JOptionPane.showMessageDialog(null, targets.messages().get('created') + '\n' + created)
                 return
             } catch (IllegalArgumentException | IOException problem) {

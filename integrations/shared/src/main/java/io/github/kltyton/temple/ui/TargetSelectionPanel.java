@@ -35,6 +35,9 @@ public final class TargetSelectionPanel extends JPanel {
     private final JButton add = new JButton(), refresh = new JButton(), remove = new JButton();
     private final JPanel targets = new JPanel(new BorderLayout(0, 8));
     private final JPanel catalogControls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+    private final JComboBox<String> defaultTarget = new JComboBox<>();
+    private Consumer<String> defaultTargetChanged;
+    private boolean updatingDefaultTarget;
     private UiText text;
     private VersionCatalog catalog;
     private int javaVersion;
@@ -111,7 +114,7 @@ public final class TargetSelectionPanel extends JPanel {
             if (row >= 0) {
                 selected.remove(row);
                 model.removeRow(row);
-                changed.accept(selections());
+                selectionChanged();
                 setStatus("selected", selected.size());
             }
         });
@@ -123,6 +126,42 @@ public final class TargetSelectionPanel extends JPanel {
     public UiText messages() { return text; }
 
     public JPanel targetsPanel() { return targets; }
+
+    public void enableDefaultTargetSelection(Consumer<String> listener) {
+        defaultTargetChanged = listener;
+        JLabel label = new JLabel(text.get("defaultTarget"));
+        labels.put("defaultTarget", label);
+        JPanel row = new JPanel(new BorderLayout(12, 0));
+        row.add(label, BorderLayout.WEST);
+        row.add(defaultTarget, BorderLayout.CENTER);
+        defaultTarget.setEditable(false);
+        defaultTarget.setToolTipText(text.get("defaultTargetHint"));
+        defaultTarget.addActionListener(event -> {
+            if (!updatingDefaultTarget) defaultTargetChanged.accept(defaultTarget());
+        });
+        targets.add(row, BorderLayout.NORTH);
+        updateDefaultTargets();
+    }
+
+    public String defaultTarget() {
+        return defaultTarget.getSelectedItem() == null ? "" : defaultTarget.getSelectedItem().toString();
+    }
+
+    private void selectionChanged() {
+        if (defaultTargetChanged != null) updateDefaultTargets();
+        changed.accept(selections());
+    }
+
+    private void updateDefaultTargets() {
+        String previous = defaultTarget();
+        List<String> ids = selected.stream().map(row -> row.get("loader") + "-" + row.get("minecraft_version")).toList();
+        updatingDefaultTarget = true;
+        defaultTarget.setModel(new DefaultComboBoxModel<>(ids.toArray(String[]::new)));
+        if (ids.contains(previous)) defaultTarget.setSelectedItem(previous);
+        defaultTarget.setEnabled(!ids.isEmpty());
+        updatingDefaultTarget = false;
+        defaultTargetChanged.accept(defaultTarget());
+    }
 
     public void configurationRows(BiConsumer<JLabel, JComponent> row) {
         row.accept(labels.get("language"), language);
@@ -151,6 +190,7 @@ public final class TargetSelectionPanel extends JPanel {
 
     private void translate() {
         labels.forEach((key, label) -> label.setText(text.get(key)));
+        defaultTarget.setToolTipText(text.get("defaultTargetHint"));
         add.setText(text.get("add"));
         refresh.setText(text.get("refresh"));
         remove.setText(text.get("remove"));
@@ -311,7 +351,7 @@ public final class TargetSelectionPanel extends JPanel {
         if ("forge".equals(platform) && VersionCatalog.compare(mc, "1.20.1") > 0) row.put("forgegradle_version", "6.0.54");
         selected.add(row);
         append(row);
-        changed.accept(selections());
+        selectionChanged();
         setStatus("selected", selected.size());
     }
 }
