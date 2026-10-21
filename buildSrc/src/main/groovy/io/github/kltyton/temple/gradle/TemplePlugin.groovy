@@ -2,6 +2,8 @@ package io.github.kltyton.temple.gradle
 
 import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
+import com.electronwill.nightconfig.core.Config
+import com.electronwill.nightconfig.toml.TomlParser
 import io.github.kltyton.temple.artifact.DistributionInspector
 import io.github.kltyton.temple.integration.MinecraftTemplates
 import io.github.kltyton.temple.ui.ProjectDialog
@@ -55,7 +57,10 @@ final class TemplePlugin implements Plugin<Project> {
         project.tasks.register('setupTargetWrappers') {
             group = 'temple'
             description = '初次创建工程后安装各目标 Wrapper，保留各自 Gradle 版本。'
-            dependsOn project.tasks.named('wrapper')
+            dependsOn {
+                ['gradlew', 'gradlew.bat', 'gradle/wrapper/gradle-wrapper.jar'].every { new File(root, it).isFile() }
+                        ? [] : [project.tasks.named('wrapper')]
+            }
             doLast {
                 targets.each { target ->
                     ['gradlew', 'gradlew.bat', 'gradle/wrapper/gradle-wrapper.jar'].each { name ->
@@ -197,7 +202,7 @@ final class TemplePlugin implements Plugin<Project> {
                     '可视化添加版本/Loader 目标。') : "可视化发布 ${target.id} 到 ${platform}，凭据仅存在于当前进程。"
             int runtimeVersion = target?.gradleJavaVersion ?: Integer.parseInt(System.getProperty('java.specification.version'))
             javaLauncher.set(toolchains.launcherFor { languageVersion = JavaLanguageVersion.of(runtimeVersion) })
-            classpath = project.files([entry, ProjectFiles, JsonSlurper, JsonOutput, GroovySystem].collect {
+            classpath = project.files([entry, ProjectFiles, JsonSlurper, JsonOutput, GroovySystem, TomlParser, Config].collect {
                 new File(it.protectionDomain.codeSource.location.toURI())
             }.unique())
             mainClass.set(entry.name)

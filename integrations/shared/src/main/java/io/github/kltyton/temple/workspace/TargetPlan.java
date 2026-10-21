@@ -134,9 +134,10 @@ public final class TargetPlan {
                 write(to.resolve("gradle/wrapper/gradle-wrapper.properties"), wrapper);
             }
             if (row.containsKey("forgegradle_version") && BuildScripts.dsl(root) == BuildScripts.Dsl.GROOVY) {
-                Files.writeString(to.resolve("build.gradle"), "plugins {\n    id 'net.minecraftforge.gradle' version \"${forgegradle_version}\"\n" +
+                String convention = Integer.parseInt(row.get("forgegradle_version").split("\\.")[0]) >= 7 ? "forgegradle-modern" : "forgegradle";
+                Files.writeString(to.resolve("build.gradle"), "plugins {\n    id 'java-library'\n    id 'net.minecraftforge.gradle' version \"${forgegradle_version}\"\n" +
                         "    id 'me.modmuss50.mod-publish-plugin' version \"${publish_plugin_version}\"\n}\n" +
-                        "apply from: file('../../gradle/target-conventions/forgegradle.gradle')\n");
+                        "apply from: file('../../gradle/target-conventions/" + convention + ".gradle')\n");
             }
             BuildScripts.prepareTarget(root, to);
         }

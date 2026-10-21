@@ -1,5 +1,6 @@
 import net.neoforged.moddevgradle.legacyforge.dsl.LegacyForgeExtension
 import net.neoforged.moddevgradle.legacyforge.dsl.MixinExtension
+import net.neoforged.nfrtgradle.CreateMinecraftArtifacts
 
 plugins {
     `java-library`
@@ -29,6 +30,8 @@ extensions.configure<LegacyForgeExtension> {
     }
 }
 apply(from = file("../../gradle/target-conventions/earth.gradle.kts"))
+extra["templeMinecraftResources"] = tasks.named<CreateMinecraftArtifacts>("createMinecraftArtifacts").flatMap { it.resourcesArtifact }
+apply(from = file("../../gradle/target-conventions/pack-metadata.gradle.kts"))
 apply(from = file("../../gradle/target-conventions/publish.gradle.kts"))
 extensions.configure<MixinExtension> {
     add(sourceSets.main.get(), "xaeroearth.refmap.json")

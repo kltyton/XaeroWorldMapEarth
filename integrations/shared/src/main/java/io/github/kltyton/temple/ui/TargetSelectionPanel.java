@@ -42,6 +42,7 @@ public final class TargetSelectionPanel extends JPanel {
     private VersionCatalog catalog;
     private int javaVersion;
     private boolean ready;
+    private boolean updatingLoaders;
     private String statusKey = "loading";
     private int statusCount;
     private int gameRequest;
@@ -104,7 +105,7 @@ public final class TargetSelectionPanel extends JPanel {
             firePropertyChange("language", old, text);
         });
         minecraft.addActionListener(event -> loadGame());
-        loader.addActionListener(event -> updateLoader());
+        loader.addActionListener(event -> { if (!updatingLoaders) loadSelection(); });
         version.addActionListener(event -> updateReady());
         api.addActionListener(event -> updateReady());
         preview.addActionListener(event -> updateLoader());
@@ -254,22 +255,32 @@ public final class TargetSelectionPanel extends JPanel {
 
     private void loadGame() {
         if (catalog == null || !minecraft.isEnabled() || minecraft.getSelectedItem() == null) return;
+        updatingLoaders = true;
+        loader.setModel(new DefaultComboBoxModel<>(catalog.loaders(minecraft.getSelectedItem().toString()).toArray(String[]::new)));
+        updatingLoaders = false;
+        loadSelection();
+    }
+
+    private void loadSelection() {
+        if (catalog == null || !minecraft.isEnabled() || minecraft.getSelectedItem() == null
+                || loader.getSelectedItem() == null) return;
         VersionCatalog data = catalog;
         String mc = minecraft.getSelectedItem().toString();
+        String platform = loader.getSelectedItem().toString();
         int request = ++gameRequest;
         ready = false;
         javaVersion = 0;
         add.setEnabled(false);
         toolchain.setText(text.get("loadingVersions"));
-        loader.setModel(new DefaultComboBoxModel<>(data.loaders(mc).toArray(String[]::new)));
         updateLoader();
         new SwingWorker<Integer, Void>() {
             @Override protected Integer doInBackground() {
-                if (data.loaders(mc).contains("fabric")) data.loadCompatibleVersions(mc);
+                if ("fabric".equals(platform)) data.loadCompatibleVersions(mc);
                 return data.javaVersion(mc);
             }
             @Override protected void done() {
-                if (request != gameRequest || data != catalog || !mc.equals(minecraft.getSelectedItem())) return;
+                if (request != gameRequest || data != catalog || !mc.equals(minecraft.getSelectedItem())
+                        || !platform.equals(loader.getSelectedItem())) return;
                 try {
                     javaVersion = get();
                     ready = true;
@@ -308,6 +319,7 @@ public final class TargetSelectionPanel extends JPanel {
 
     private String wrapperVersion(String platform, String mc) {
         if ("fabric".equals(platform) && (javaVersion >= 25 || VersionCatalog.compare(mc, "1.21.4") > 0)) return "9.7.1";
+        if ("forge".equals(platform) && VersionCatalog.compare(mc, "1.21.5") >= 0) return "9.5.0";
         return javaVersion >= 25 ? "9.5.1" : "8.14.4";
     }
 
@@ -348,7 +360,8 @@ public final class TargetSelectionPanel extends JPanel {
             row.put("loom_version", "1.18.2");
         }
         if ("fabric".equals(platform)) row.put("fabric_api_version", api.getSelectedItem().toString());
-        if ("forge".equals(platform) && VersionCatalog.compare(mc, "1.20.1") > 0) row.put("forgegradle_version", "6.0.54");
+        if ("forge".equals(platform) && VersionCatalog.compare(mc, "1.20.1") > 0)
+            row.put("forgegradle_version", VersionCatalog.compare(mc, "1.21.5") >= 0 ? "7.0.40" : "6.0.54");
         selected.add(row);
         append(row);
         selectionChanged();

@@ -42,10 +42,7 @@ final class MinecraftTemplates {
             }
             files.add(descriptor)
         }
-        String properties = '#[[org.gradle.jvmargs=-Xmx3G -Dfile.encoding=UTF-8\norg.gradle.daemon=false\n]]#' +
-                'mod_id=${MOD_ID}\nmod_name=${MOD_NAME}\nmod_group_id=${BUILD_COORDS.groupId}\n' +
-                'mod_authors=${AUTHORS}\nmod_version=${BUILD_COORDS.version}\nmod_license=${LICENSE}\n' +
-                'mod_description=${DESCRIPTION}\ntemple_idea_project=true\ntemple_build_dsl=${BUILD_DSL}\n'
+        String properties = '#[[org.gradle.jvmargs=-Xmx3G -Dfile.encoding=UTF-8\norg.gradle.daemon=false\n]]#'
         new File(assets, 'project.properties.ft').setText(properties, 'UTF-8')
         exportedAssets.add(new File(assets, 'project.properties.ft'))
         files.add([template: 'assets/project.properties.ft', destination: 'gradle.properties', reformat: false])

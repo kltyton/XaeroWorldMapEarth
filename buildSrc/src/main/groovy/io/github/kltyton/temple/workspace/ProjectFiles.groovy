@@ -60,18 +60,7 @@ final class ProjectFiles {
     }
 
     static void identity(Properties values) {
-        String javaPackage = values.getProperty('mod_java_package', values.getProperty('mod_group_id', ''))
-        if (!(values.getProperty('mod_id', '') ==~ /[a-z][a-z0-9_]{1,63}/) ||
-                !(values.getProperty('mod_group_id', '') ==~ /[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+/) ||
-                !(javaPackage ==~ /[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+/)) {
-            throw new IllegalArgumentException('Mod ID or Java package is invalid')
-        }
-        ['mod_name', 'mod_authors', 'mod_version', 'mod_license', 'mod_description'].each { key ->
-            String value = values.getProperty(key, '')
-            if (!value || value.contains('\n') || value.contains('\r')) {
-                throw new IllegalArgumentException("Expected single-line ${key}")
-            }
-        }
+        ProjectIdentity.validate(values)
     }
 
     static List<File> distributableFiles(File root) {

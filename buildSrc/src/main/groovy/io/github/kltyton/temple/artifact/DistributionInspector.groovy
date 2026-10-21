@@ -1,10 +1,13 @@
 package io.github.kltyton.temple.artifact
 
 import groovy.json.JsonSlurper
+import com.electronwill.nightconfig.core.UnmodifiableConfig
+import com.electronwill.nightconfig.toml.TomlParser
 import io.github.kltyton.temple.workspace.ProjectFiles
 import io.github.kltyton.temple.workspace.TargetDefinition
 import java.security.MessageDigest
 import java.util.zip.ZipFile
+import java.util.jar.Manifest
 
 final class DistributionInspector {
     static Map<String, Object> verify(File root, TargetDefinition target) {
@@ -27,27 +30,50 @@ final class DistributionInspector {
                 if (!(name in names)) { throw new IllegalArgumentException("Missing ${name}: ${artifact}") }
             }
             String text = zip.getInputStream(zip.getEntry(metadata)).getText('UTF-8')
-            if (text.contains('${')) { throw new IllegalArgumentException('Unexpanded metadata') }
             String modId = identity.getProperty('mod_id')
             if (target.loader == 'fabric') {
                 def value = new JsonSlurper().parseText(text)
                 if (value.id != modId || value.version != identity.getProperty('mod_version')) {
-                    throw new IllegalArgumentException('Incorrect Fabric identity or mod version')
+                    throw new IllegalArgumentException('Incorrect Fabric identity or Minecraft version')
                 }
                 if (['depends', 'recommends', 'suggests', 'conflicts', 'breaks'].any { value.containsKey(it) }) {
                     throw new IllegalArgumentException('Unexpected Fabric dependency declaration')
                 }
                 value.entrypoints.values().flatten().each { item ->
                     String name = item instanceof Map ? item.value : item.toString()
-                    if (!(name.replace('.', '/') + '.class' in names)) {
+                    String adapter = item instanceof Map ? item.get('adapter', 'default') : 'default'
+                    if (adapter == 'default' && !(name.split('::', 2)[0].replace('.', '/') + '.class' in names)) {
                         throw new IllegalArgumentException("Missing Fabric entrypoint: ${name}")
                     }
                 }
             } else {
-                def mod = text =~ /(?m)^modId\s*=\s*"([^"]+)"/
-                if (!mod.find() || mod.group(1) != modId) { throw new IllegalArgumentException('Incorrect mod identity') }
-                if (text =~ /(?m)^\s*\[\[dependencies\./) {
+                def value = new TomlParser().parse(text)
+                List<UnmodifiableConfig> mods = value.get('mods')
+                def mod = mods?.find { it.get('modId') == modId }
+                if (mod == null) throw new IllegalArgumentException('Incorrect mod identity')
+                String version = mod.get('version')
+                Map substitutions = [:]
+                UnmodifiableConfig properties = value.get('properties')
+                if (properties != null) substitutions.putAll(properties.valueMap())
+                def manifest = zip.getEntry('META-INF/MANIFEST.MF')
+                if (manifest != null) zip.getInputStream(manifest).withCloseable {
+                    substitutions.jarVersion = new Manifest(it).mainAttributes.getValue('Implementation-Version')
+                }
+                version = version.replaceAll(/\$\{file\.([^}]+)\}/) { match, key ->
+                    if (substitutions[key] == null) throw new IllegalArgumentException("Unresolved version property: ${match}")
+                    substitutions[key].toString()
+                }
+                if (version != identity.getProperty('mod_version')) throw new IllegalArgumentException('Incorrect mod version')
+                if (value.contains('dependencies')) {
                     throw new IllegalArgumentException('Unexpected FML dependency declaration')
+                }
+                if (target.loader == 'forge') {
+                    def packEntry = zip.getEntry('pack.mcmeta')
+                    if (packEntry == null) throw new IllegalArgumentException('Missing pack.mcmeta')
+                    def pack = zip.getInputStream(packEntry).withCloseable { new JsonSlurper().parse(it, 'UTF-8') }.pack
+                    if (!(pack instanceof Map) || pack.description == null ||
+                            !(pack.pack_format instanceof Number || pack.min_format != null && pack.max_format != null))
+                        throw new IllegalArgumentException('Invalid pack.mcmeta')
                 }
             }
             names.each { name ->

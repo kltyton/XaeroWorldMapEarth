@@ -23,12 +23,13 @@ public final class BuildScripts {
     public static void createProject(Path root) throws IOException {
         if (dsl(root) != Dsl.KOTLIN) return;
         for (String file : List.of("build.gradle.kts", "settings.gradle.kts", "buildSrc/build.gradle.kts", "common/build.gradle.kts",
-                "gradle/target-conventions/base.gradle.kts", "gradle/target-conventions/publish.gradle.kts",
+                "gradle/target-conventions/base.gradle.kts", "gradle/target-conventions/pack-metadata.gradle.kts",
+                "gradle/target-conventions/publish.gradle.kts",
                 "gradle/target-conventions/earth.gradle.kts")) {
             install(root.resolve(file), file);
             Files.deleteIfExists(root.resolve(file.substring(0, file.length() - 4)));
         }
-        for (String file : List.of("fabric", "forge", "forgegradle", "neoforge"))
+        for (String file : List.of("fabric", "forge", "forgegradle", "forgegradle-modern", "neoforge"))
             Files.deleteIfExists(root.resolve("gradle/target-conventions/" + file + ".gradle"));
         for (String parent : List.of("targets", "gradle/target-blueprints")) {
             Path directory = root.resolve(parent);
@@ -44,7 +45,8 @@ public final class BuildScripts {
         Properties values = read(target.resolve("gradle.properties"));
         String variant = switch (values.getProperty("loader")) {
             case "fabric" -> Integer.parseInt(values.getProperty("java_version")) >= 25 ? "fabric-unmapped" : "fabric-mapped";
-            case "forge" -> values.containsKey("forgegradle_version") ? "forgegradle" : "forge";
+            case "forge" -> values.containsKey("forgegradle_version") ?
+                    (Integer.parseInt(values.getProperty("forgegradle_version").split("\\.")[0]) >= 7 ? "forgegradle-modern" : "forgegradle") : "forge";
             case "neoforge" -> "neoforge";
             default -> throw new IllegalArgumentException("Unknown Loader: " + values.getProperty("loader"));
         };

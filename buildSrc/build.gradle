@@ -5,9 +5,11 @@ plugins {
 
 sourceSets.main.java.srcDir('../integrations/shared/src/main/java')
 sourceSets.main.resources.srcDir('../integrations/shared/src/main/resources')
+repositories { mavenCentral() }
 
 dependencies {
     implementation localGroovy()
+    implementation 'com.electronwill.night-config:toml:3.8.3'
 }
 
 java {

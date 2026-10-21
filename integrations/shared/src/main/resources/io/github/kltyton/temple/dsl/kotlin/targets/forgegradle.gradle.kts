@@ -30,4 +30,5 @@ extensions.configure<UserDevExtension> {
 dependencies { add("minecraft", "net.minecraftforge:forge:$minecraft_version-$loader_version") }
 tasks.named("jar") { finalizedBy("reobfJar") }
 apply(from = file("../../gradle/target-conventions/earth.gradle.kts"))
+apply(from = file("../../gradle/target-conventions/pack-metadata.gradle.kts"))
 apply(from = file("../../gradle/target-conventions/publish.gradle.kts"))

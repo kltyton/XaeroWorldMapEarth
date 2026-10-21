@@ -17,4 +17,5 @@ dependencies {
     if (project.hasProperty('kuiJar')) compileOnly files(file(project.property('kuiJar')))
 }
 
+apply from: '../../gradle/target-conventions/pack-metadata.gradle'
 apply from: '../../gradle/target-conventions/publish.gradle'

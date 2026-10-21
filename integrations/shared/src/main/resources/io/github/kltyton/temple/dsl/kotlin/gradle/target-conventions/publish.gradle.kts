@@ -1,4 +1,13 @@
 import java.util.zip.ZipFile
+import java.util.jar.Manifest
+import groovy.json.JsonSlurper
+import com.electronwill.nightconfig.core.UnmodifiableConfig
+import com.electronwill.nightconfig.toml.TomlParser
+
+buildscript {
+    repositories { mavenCentral() }
+    dependencies { classpath("com.electronwill.night-config:toml:3.8.3") }
+}
 
 apply(plugin = "maven-publish")
 fun setting(name: String) = project.property(name).toString()
@@ -19,7 +28,8 @@ val verifyDistribution = tasks.register("verifyDistribution") {
     dependsOn(productionTask, releaseTask)
     inputs.file(productionFile)
     inputs.properties(mapOf("mod_id" to setting("mod_id"), "mod_java_package" to javaPackage,
-            "mod_entry_class" to entryClass, "loader" to loader, "minecraft_version" to setting("minecraft_version")))
+            "mod_entry_class" to entryClass, "loader" to loader, "minecraft_version" to setting("minecraft_version"),
+            "mod_version" to setting("mod_version"), "minecraft_version_range" to setting("minecraft_version_range")))
     outputs.file(artifactRecord)
     doLast {
         val artifact = productionFile.get().asFile
@@ -33,7 +43,37 @@ val verifyDistribution = tasks.register("verifyDistribution") {
                 require(zip.getEntry(name) != null) { "Missing $name in $artifact" }
             }
             val text = zip.getInputStream(zip.getEntry(metadata)).bufferedReader(Charsets.UTF_8).use { it.readText() }
-            require(!text.contains("\${")) { "Unexpanded metadata in $artifact" }
+            if (loader == "fabric") {
+                val value = JsonSlurper().parseText(text) as Map<*, *>
+                require(value["id"] == setting("mod_id") && value["version"] == setting("mod_version")) {
+                    "Incorrect Fabric metadata in $artifact"
+                }
+                require(listOf("depends", "recommends", "suggests", "conflicts", "breaks").none { value.containsKey(it) }) {
+                    "Unexpected Fabric dependency declaration in $artifact"
+                }
+            } else {
+                val value = TomlParser().parse(text)
+                val mods = value.get<List<UnmodifiableConfig>>("mods") ?: emptyList()
+                val mod = mods.find { it.get<String>("modId") == setting("mod_id") }
+                        ?: error("Incorrect mod identity in $artifact")
+                val substitutions = mutableMapOf<String, Any?>()
+                value.get<UnmodifiableConfig>("properties")?.let { substitutions.putAll(it.valueMap()) }
+                zip.getEntry("META-INF/MANIFEST.MF")?.let { entry ->
+                    substitutions["jarVersion"] = zip.getInputStream(entry).use { Manifest(it).mainAttributes.getValue("Implementation-Version") }
+                }
+                val version = Regex("\\$\\{file\\.([^}]+)\\}").replace(mod.get<String>("version") ?: error("Missing mod version")) { match ->
+                    substitutions[match.groupValues[1]]?.toString() ?: error("Unresolved version property: ${match.value}")
+                }
+                require(version == setting("mod_version")) { "Incorrect mod version in $artifact" }
+                require(!value.contains("dependencies")) { "Unexpected FML dependency declaration in $artifact" }
+                if (loader == "forge") {
+                    val packEntry = zip.getEntry("pack.mcmeta") ?: error("Missing pack.mcmeta in $artifact")
+                    val document = zip.getInputStream(packEntry).use { JsonSlurper().parse(it, "UTF-8") } as Map<*, *>
+                    val pack = document["pack"] as? Map<*, *> ?: error("Invalid pack.mcmeta in $artifact")
+                    require(pack["description"] != null && (pack["pack_format"] is Number ||
+                            pack["min_format"] != null && pack["max_format"] != null)) { "Invalid pack.mcmeta in $artifact" }
+                }
+            }
         }
         artifactRecord.get().asFile.apply {
             parentFile.mkdirs()

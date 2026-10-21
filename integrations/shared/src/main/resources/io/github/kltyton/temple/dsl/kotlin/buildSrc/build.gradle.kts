@@ -6,7 +6,11 @@ sourceSets.main {
     java.srcDir("../integrations/shared/src/main/java")
     resources.srcDir("../integrations/shared/src/main/resources")
 }
-dependencies { implementation(localGroovy()) }
+repositories { mavenCentral() }
+dependencies {
+    implementation(localGroovy())
+    implementation("com.electronwill.night-config:toml:3.8.3")
+}
 java {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
