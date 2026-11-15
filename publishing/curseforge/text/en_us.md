@@ -35,7 +35,9 @@ Auto-navigation can also steer a mount you are controlling. If you are already g
 
 ## Installation
 
-Install Earth on the client and choose the file that matches your Minecraft version and loader. It requires **Xaero's World Map** and **XaeroLib (Xlib)**. Fabric players also need **Fabric API**. The 0.1.3 files bundle KltytonUI 1.3.1 and its NeonJS runtime.
+Install Earth on the client and choose the file that matches your Minecraft version and loader. It requires **Xaero's World Map** and **XaeroLib (Xlib)**. Fabric players also need **Fabric API**.
+
+Navigation, the 3D HUD minimap, and CompanionCall integration are available in [Earth 0.1.3](https://github.com/kltyton/XaeroWorldMapEarth/releases/tag/v0.1.3). This release bundles KltytonUI 1.3.1 and its NeonJS runtime.
 
 | Minecraft | Loaders | Java |
 | --- | --- | --- |
