@@ -1,5 +1,7 @@
 package io.github.kltyton.temple.workspace;
 
+import io.github.kltyton.temple.workspace.sources.SourceBlueprints;
+
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -95,6 +97,9 @@ public final class TargetPlan {
                 }
             }
         // Copy every variant before modifying a blueprint also selected as a target.
+        if (!removeBlueprints)
+            for (String loader : selections.stream().map(row -> row.get("loader")).distinct().toList())
+                SourceBlueprints.activate(root, loader);
         for (PlannedTarget plan : plans) {
             Path from = plan.from(), to = plan.to();
             if (!from.equals(to)) {

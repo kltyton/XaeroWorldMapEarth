@@ -20,7 +20,9 @@ final class MinecraftTemplates {
             if (relative == 'gradle.properties' || source.name.endsWith('.jar')) { return }
             String destination = relative
             String content = source.getText('UTF-8')
-            if (source.name.endsWith('.java') && relative.tokenize('/')[0] in ['common', 'targets']) {
+            boolean gameSource = relative.tokenize('/')[0] in ['common', 'targets'] ||
+                    relative.startsWith('gradle/target-blueprints/common/')
+            if ((source.name.endsWith('.java') || source.name.endsWith('.java.template')) && gameSource) {
                 destination = relative.replace(original.replace('.', '/'), '${BUILD_COORDS.groupId.replace(".", "/")}')
                 content = literalParts(content, original, '${BUILD_COORDS.groupId}')
             } else { content = literal(content) }

@@ -5,6 +5,8 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.gen.Invoker;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.Level;
 import xaero.map.gui.GuiMap;
 import xaero.map.gui.dropdown.rightclick.GuiRightClickMenu;
 import xaero.map.animation.SlowingAnimation;
@@ -25,8 +27,13 @@ public interface GuiMapAccess {
     @Accessor("cameraDestinationAnimX") SlowingAnimation earth$cameraAnimationX();
     @Accessor("cameraDestinationAnimZ") SlowingAnimation earth$cameraAnimationZ();
     @Accessor("attachedCamera") static boolean earth$attachedCamera() { throw new AssertionError(); }
+    @Accessor("attachedCamera") static void earth$attachedCamera(boolean value) { throw new AssertionError(); }
     @Invoker("onAttachedCameraButton") void earth$toggleAttachedCamera(Button button);
     @Accessor("rightClickMenu") GuiRightClickMenu earth$rightClickMenu();
+    @Accessor("rightClickX") int earth$rightClickX();
+    @Accessor("rightClickY") int earth$rightClickY();
+    @Accessor("rightClickZ") int earth$rightClickZ();
+    @Accessor("rightClickDim") ResourceKey<Level> earth$rightClickDimension();
     @Accessor("caveModeOptions") xaero.map.gui.GuiCaveModeOptions earth$caveModeOptions();
     @Accessor("scale") double earth$scale();
     @Accessor("regionBuffer") ArrayList<MapRegion> earth$regions();

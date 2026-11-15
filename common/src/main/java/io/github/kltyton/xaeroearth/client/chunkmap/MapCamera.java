@@ -6,7 +6,12 @@ import org.joml.Vector4f;
 
 /** Shared world/screen projection for native terrain, entities and map controls. */
 public record MapCamera(double x, double y, double z, double pixelsPerBlock,
-                               double yaw, double angle, String mode, int width, int height, double unit, double fieldOfView) {
+                        double yaw, double angle, String mode, int width, int height, double unit, double fieldOfView,
+                        int viewWidth, int viewHeight, double viewX, double viewY) {
+    public MapCamera(double x, double y, double z, double pixelsPerBlock, double yaw, double angle, String mode,
+                     int width, int height, double unit, double fieldOfView) {
+        this(x, y, z, pixelsPerBlock, yaw, angle, mode, width, height, unit, fieldOfView, width, height, 0, 0);
+    }
     public MapCamera(double x, double y, double z, double pixelsPerBlock,
                             double yaw, String mode, int width, int height, double unit, double fieldOfView) {
         this(x, y, z, pixelsPerBlock, yaw, mode.equals("top") ? 0 : mode.equals("street")
@@ -18,10 +23,8 @@ public record MapCamera(double x, double y, double z, double pixelsPerBlock,
     }
 
     public Vector3f eyeOffset() {
-        float halfHeight = (float) (height / (2 * pixelsPerBlock));
         float cameraAngle = mode.equals("top") ? 0.0001f : (float) Math.max(0.0001, Math.min(angle, Math.PI - 0.0001));
-        float distance = mode.equals("street") ? 0.0001f * (float) unit : Math.max(300 * (float) unit,
-                halfHeight / (float) Math.tan(Math.toRadians(37.5)));
+        float distance = mode.equals("street") ? 0.0001f * (float) unit : orthographicRange();
         return new Vector3f(-(float) Math.sin(yaw) * (float) Math.sin(cameraAngle) * distance,
                 (float) Math.cos(cameraAngle) * distance, (float) Math.cos(yaw) * (float) Math.sin(cameraAngle) * distance);
     }
@@ -31,12 +34,25 @@ public record MapCamera(double x, double y, double z, double pixelsPerBlock,
     }
 
     public Matrix4f projectionMatrix() {
-        float halfHeight = (float) (height / (2 * pixelsPerBlock));
-        float halfWidth = halfHeight * width / height;
+        Matrix4f projection = viewportProjectionMatrix();
+        return viewWidth == width && viewHeight == height && viewX == 0 && viewY == 0 ? projection
+                : new Matrix4f().translation((float) ((viewWidth + 2 * viewX) / width - 1),
+                        (float) (1 - (viewHeight + 2 * viewY) / height), 0)
+                        .scale((float) viewWidth / width, (float) viewHeight / height, 1).mul(projection);
+    }
+
+    public Matrix4f viewportProjectionMatrix() {
+        float halfHeight = (float) (viewHeight / (2 * pixelsPerBlock));
+        float halfWidth = halfHeight * viewWidth / viewHeight;
         return mode.equals("street")
-                ? new Matrix4f().perspective((float) Math.toRadians(fieldOfView), (float) width / height,
+                ? new Matrix4f().perspective((float) Math.toRadians(fieldOfView), (float) viewWidth / viewHeight,
                         0.01f * (float) unit, 2000 * (float) unit)
-                : new Matrix4f().ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, (float) unit, 100000 * (float) unit);
+                : new Matrix4f().ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, (float) unit, 2 * orthographicRange());
+    }
+
+    private float orthographicRange() {
+        return (float) (768 * unit / Math.max(0.16, Math.cos(angle))
+                + Math.hypot(viewWidth, viewHeight) / (2 * pixelsPerBlock));
     }
 
     /** Converts the shared projection to Minecraft's reverse-Z device clip range. */

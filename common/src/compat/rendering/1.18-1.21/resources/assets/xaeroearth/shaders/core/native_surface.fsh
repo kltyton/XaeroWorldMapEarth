@@ -5,14 +5,55 @@ uniform vec4 Grid;
 uniform vec4 CoverageRegion;
 uniform vec4 SurfaceOrigin;
 in vec3 localPosition;
+flat in ivec2 outlineCell;
+in float outlineDepth;
 out vec4 fragColor;
+bool detailedAt(ivec2 cell) {
+    ivec2 size = textureSize(Coverage, 0);
+    return all(greaterThanEqual(cell, ivec2(0))) && all(lessThan(cell, size))
+            && texelFetch(Coverage, cell, 0).r > 0.75;
+}
+bool mappedCoarseAt(vec2 worldXZ, ivec2 cell) {
+    if (detailedAt(cell)) return false;
+    ivec2 sampleCell = ivec2(floor((worldXZ - SurfaceOrigin.xz) / Grid.z));
+    return all(greaterThanEqual(sampleCell, ivec2(0))) && all(lessThan(sampleCell, ivec2(Grid.xy)))
+            && texelFetch(SurfaceColor, sampleCell, 0).a > 0.0;
+}
+bool touchesCoarseEdge(vec2 worldXZ, ivec2 cell) {
+    vec2 local = (worldXZ + CoverageRegion.xy) - vec2(cell) * 16.0;
+    const float overlap = 0.25;
+    if (local.x < overlap && mappedCoarseAt(worldXZ - vec2(overlap, 0.0), cell - ivec2(1, 0))) return true;
+    if (local.y < overlap && mappedCoarseAt(worldXZ - vec2(0.0, overlap), cell - ivec2(0, 1))) return true;
+    if (local.x > 16.0 - overlap && mappedCoarseAt(worldXZ + vec2(overlap, 0.0), cell + ivec2(1, 0))) return true;
+    return local.y > 16.0 - overlap && mappedCoarseAt(worldXZ + vec2(0.0, overlap), cell + ivec2(0, 1));
+}
 void main() {
-    vec2 coverageUV = (localPosition.xz + CoverageRegion.xy) / (vec2(textureSize(Coverage, 0)) * 16.0);
-    if (all(greaterThanEqual(coverageUV, vec2(0.0))) && all(lessThan(coverageUV, vec2(1.0)))
-            && texture(Coverage, coverageUV).r > 0.75) discard;
+    gl_FragDepth = gl_FragCoord.z;
+    vec2 worldXZ = localPosition.xz;
+    if (outlineCell.x >= 0) {
+        // Sample the owner cell even when the rasterized edge lies exactly on its boundary.
+        worldXZ = SurfaceOrigin.xz + (vec2(outlineCell) + 0.5) * Grid.z;
+    }
+    ivec2 cell = ivec2(floor((worldXZ + CoverageRegion.xy) / 16.0));
+    if (outlineDepth >= 0.0 && detailedAt(cell)) {
+        if (outlineCell.x >= 0 || !touchesCoarseEdge(worldXZ, cell)) discard;
+        // A narrow backing at clear depth leaves every real opaque and translucent face in front.
+        gl_FragDepth = 1.0;
+    }
+    if (outlineCell.x >= 0) {
+        vec3 color = texelFetch(SurfaceColor, outlineCell, 0).rgb;
+        if (outlineDepth < 0.0) {
+            fragColor = vec4(color * mix(1.0, 0.72, smoothstep(0.0, 1.0, -1.0 - outlineDepth)), 1.0);
+            return;
+        }
+        vec3 rock = vec3(0.25, 0.24, 0.22) * mix(0.55, 1.0, clamp(Grid.w, 0.0, 1.0));
+        fragColor = vec4(mix(color * 0.67, rock, smoothstep(0.0, 0.65, outlineDepth)), 1.0);
+        return;
+    }
     vec4 color = texture(SurfaceColor, (localPosition.xz - SurfaceOrigin.xz) / (Grid.xy * Grid.z));
     if (color.a == 0.0) discard;
     vec3 normal = normalize(cross(dFdy(localPosition), dFdx(localPosition)));
     float shade = (0.72 + 0.28 * abs(normal.y)) * mix(0.55, 1.0, clamp(Grid.w, 0.0, 1.0));
-    fragColor = vec4(color.rgb * shade, 1.0);
+    // Unmapped texels carry zero RGB. Recover mapped color from the filtered coverage at shorelines.
+    fragColor = vec4((color.rgb / color.a) * shade, 1.0);
 }

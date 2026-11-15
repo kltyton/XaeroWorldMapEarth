@@ -60,12 +60,9 @@ public final class NativeTileSession implements AutoCloseable, ChunkTileSource {
     private int ceiling = Integer.MAX_VALUE, inFlight;
     private long residentBytes, lastSchedule, cacheHits, bakedTiles;
     private double focusX, focusZ;
-    private record TileBounds(int minX, int maxX, int minZ, int maxZ) {
-        boolean contains(ChunkTiles.Tile tile) {
-            return tile.x() >= minX && tile.x() <= maxX && tile.z() >= minZ && tile.z() <= maxZ;
-        }
-    }
+    private record TileBounds(int minX, int maxX, int minZ, int maxZ) { }
     private TileBounds scheduledBounds;
+    private java.util.Set<ChunkTiles.Tile> scheduledTiles = java.util.Set.of();
 
     public NativeTileSession(ClientLevel level, ActiveMapResources resources, Path cacheRoot,
                                     String worldKey, int parallelism) {
@@ -101,24 +98,39 @@ public final class NativeTileSession implements AutoCloseable, ChunkTileSource {
         focusX = centerX; focusZ = centerZ;
         if (ceiling != requestedCeiling) {
             ceiling = requestedCeiling;
+            source.discardCeiling();
             entries.values().forEach(entry -> entry.obsolete.set(true));
             entries.clear(); pending.clear(); scheduledBounds = null;
+            scheduledTiles = java.util.Set.of();
             ready.clear(); versions.clear(); residentBytes = 0; revision.incrementAndGet();
+        }
+        if (radius <= 0) {
+            for (Pending previous : pending) previous.entry().queued = null;
+            pending.clear();
+            scheduledBounds = null;
+            scheduledTiles = java.util.Set.of();
+            cancelOutsideFocus();
+            return;
         }
         long now = System.nanoTime();
         int jobLimit = visible ? parallelism * 2 : 1;
-        if (now - lastSchedule < 50_000_000L || inFlight >= jobLimit) return;
+        if (now - lastSchedule < 50_000_000L) return;
         lastSchedule = now;
         int minX = GRID.getCellX((int) Math.floor(centerX - radius)), maxX = GRID.getCellX((int) Math.ceil(centerX + radius));
         int minZ = GRID.getCellY((int) Math.floor(centerZ - radius)), maxZ = GRID.getCellY((int) Math.ceil(centerZ + radius));
         var bounds = new TileBounds(minX, maxX, minZ, maxZ);
         if (!bounds.equals(scheduledBounds)) {
             var next = new ArrayList<ChunkTiles.Tile>();
-            for (int z = minZ; z <= maxZ; z++) for (int x = minX; x <= maxX; x++) next.add(new ChunkTiles.Tile(x, z));
+            for (int z = minZ; z <= maxZ; z++) for (int x = minX; x <= maxX; x++) {
+                if (TerrainDetail.intersects(centerX, centerZ, radius + 32, GRID.getCellMinX(x), GRID.getCellMinY(z), 32))
+                    next.add(new ChunkTiles.Tile(x, z));
+            }
             next.sort(Comparator.comparingDouble(tile -> Math.hypot(GRID.getCellMinX(tile.x()) + 16 - centerX,
                     GRID.getCellMinY(tile.z()) + 16 - centerZ)));
             for (Pending previous : pending) previous.entry().queued = null;
             pending.clear(); scheduledBounds = bounds;
+            scheduledTiles = java.util.Set.copyOf(next);
+            cancelOutsideFocus();
             int rank = 0;
             for (var tile : next) {
                 Entry entry = entries.computeIfAbsent(tile, ignored -> new Entry());
@@ -139,10 +151,23 @@ public final class NativeTileSession implements AutoCloseable, ChunkTileSource {
 
     private void schedule(ChunkTiles.Tile tile, Entry entry) {
         if (entry.queued != null) { pending.remove(entry.queued); entry.queued = null; }
-        if (closed.get() || resources.isClosed() || scheduledBounds == null || !scheduledBounds.contains(tile)
+        if (closed.get() || resources.isClosed() || !scheduledTiles.contains(tile)
                 || entry.work != null || !entry.dirty && ready.containsKey(tile)) return;
         entry.queued = new Pending(tile, entry, entry.nextAttempt, entry.rank);
         pending.add(entry.queued);
+    }
+
+    public boolean usesCeiling(int requestedCeiling) { return ceiling == requestedCeiling; }
+
+    private void cancelOutsideFocus() {
+        for (var item : entries.entrySet()) {
+            Entry entry = item.getValue();
+            if (entry.work == null || scheduledTiles.contains(item.getKey())) continue;
+            entry.obsolete.set(true);
+            entry.work = null;
+            entry.dirty = true;
+            entry.preloadTried = false;
+        }
     }
 
     private void start(ChunkTiles.Tile tile, Entry entry) {
@@ -160,7 +185,7 @@ public final class NativeTileSession implements AutoCloseable, ChunkTileSource {
                                 && entries.get(tile) == entry && !ready.containsKey(tile)) putReady(tile, hit);
                     }));
         }
-        CompletableFuture<StoredTile> work = source.capture(tile, cut)
+        CompletableFuture<StoredTile> work = source.capture(tile, cut, cancelled)
                 .thenCombineAsync(cache, (capture, disk) -> {
                     if (capture == null || cancelled.getAsBoolean()) return null;
                     String key = fingerprint(capture, tile);

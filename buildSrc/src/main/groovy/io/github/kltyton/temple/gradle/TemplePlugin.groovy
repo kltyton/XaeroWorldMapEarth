@@ -11,6 +11,9 @@ import io.github.kltyton.temple.ui.PublishDialog
 import io.github.kltyton.temple.ui.TargetDialog
 import io.github.kltyton.temple.workspace.ProjectFiles
 import io.github.kltyton.temple.workspace.TargetDefinition
+import io.github.kltyton.temple.workspace.sources.SourceLayout
+import io.github.kltyton.temple.ui.UiText
+import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.tasks.JavaExec
@@ -41,6 +44,31 @@ final class TemplePlugin implements Plugin<Project> {
             group = 'temple'
             description = '显示全部 Minecraft / Loader / Java 目标。'
             doLast { project.logger.lifecycle(JsonOutput.prettyPrint(JsonOutput.toJson(targets.collect { it.describe() }))) }
+        }
+        project.tasks.register('verifySourceLayout') {
+            group = 'verification'
+            description = '核对全部目标的源码模型与目录归属，不构建游戏或自动同步。'
+            doLast {
+                def text = UiText.system()
+                def snapshot = SourceLayout.read(root.toPath()) { path ->
+                    def model
+                    try { model = new JsonSlurper().parse(path.toFile(), 'UTF-8') }
+                    catch (groovy.json.JsonException error) { throw new IllegalArgumentException('Invalid JSON: ' + path, error) }
+                    if (!(model instanceof Map)) throw new IllegalArgumentException('Expected an object: ' + path)
+                    new SourceLayout.Descriptor(model.schema as int, model.target as String, model.selection as String,
+                            model.targetDirectory as String, model.projectDirectory as String,
+                            model.javaRoots as List<String>, model.resourceRoots as List<String>,
+                            model.inputs as Map<String, String>, model.inventory as List<String>)
+                }
+                if (snapshot == null) throw new GradleException('temple_idea_project=true is required')
+                def problems = snapshot.problems().collect { text.get(it.code()) + ': ' + it.detail() } +
+                        snapshot.unassigned().collect { text.get('sourceUnassigned') + ': ' + it }
+                project.logger.lifecycle(JsonOutput.prettyPrint(JsonOutput.toJson(snapshot.targets().collect { target ->
+                    [target: target.id(), java: target.roots().findAll { !it.resource() }.collect { it.path().toString() },
+                     resources: target.roots().findAll { it.resource() }.collect { it.path().toString() }]
+                })))
+                if (problems) throw new GradleException(problems.join('\n') + '\n' + text.get('sourceLayoutHint'))
+            }
         }
         project.tasks.register('writeCiMatrix') {
             group = 'temple'

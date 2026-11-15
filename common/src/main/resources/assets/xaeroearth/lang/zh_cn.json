@@ -1,5 +1,11 @@
 {
   "xaeroearth.view.isometric": "等轴视角",
   "xaeroearth.view.top": "俯视视角",
-  "xaeroearth.view.street": "街景视角"
+  "xaeroearth.view.street": "自由视角",
+  "xaeroearth.navigation.guide": "导航到此处",
+  "xaeroearth.navigation.auto_distance": "自动寻路 · 距终点 %s 米 · Esc 取消",
+  "xaeroearth.navigation.guide_distance": "导航 · 距终点 %s 米 · Esc 清除",
+  "xaeroearth.navigation.start": "自动寻路到此处",
+  "xaeroearth.navigation.unreachable": "未找到可行路线，或当前无法移动。",
+  "xaeroearth.navigation.companion_unavailable": "无法发送伙伴移动请求。"
 }

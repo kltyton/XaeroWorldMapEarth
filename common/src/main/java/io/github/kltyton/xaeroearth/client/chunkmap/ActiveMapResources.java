@@ -2,6 +2,9 @@ package io.github.kltyton.xaeroearth.client.chunkmap;
 
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.FileNotFoundException;
+import java.nio.file.NoSuchFileException;
+import com.mojang.logging.LogUtils;
 import java.io.OutputStream;
 import java.nio.file.Path;
 import java.security.DigestOutputStream;
@@ -60,11 +63,12 @@ public final class ActiveMapResources implements AutoCloseable {
     private String fingerprint(Map<String, Resource> resources, Map<String, SpriteLayout> sprites) throws IOException {
         MessageDigest combined = digest();
         try (var output = new DataOutputStream(new DigestOutputStream(OutputStream.nullOutputStream(), combined))) {
-            output.writeUTF(MapResourcePlatform.FORMAT);
+            output.writeUTF(MapResourcePlatform.FORMAT + "-resource-presence-2");
             output.writeInt(resources.size());
             byte[] buffer = new byte[32768];
             for (var resource : resources.entrySet()) {
                 if (closed.get() || Thread.currentThread().isInterrupted()) throw new CancellationException();
+                output.writeUTF(resource.getKey());
                 MessageDigest content = digest();
                 long size = 0;
                 try (var input = MapResourcePlatform.open(resource.getValue())) {
@@ -74,8 +78,15 @@ public final class ActiveMapResources implements AutoCloseable {
                         content.update(buffer, 0, count);
                         size += count;
                     }
+                } catch (FileNotFoundException | NoSuchFileException missing) {
+                    // Absence is part of this resource generation's cache identity.
+                    output.writeLong(-1L);
+                    LogUtils.getLogger().warn("Map cache resource {} is listed but unavailable: {}",
+                            resource.getKey(), missing.toString());
+                    continue;
+                } catch (IOException failure) {
+                    throw new IOException("Cannot fingerprint map resource " + resource.getKey(), failure);
                 }
-                output.writeUTF(resource.getKey());
                 output.writeLong(size);
                 output.write(content.digest());
             }

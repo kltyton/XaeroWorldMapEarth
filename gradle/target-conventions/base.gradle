@@ -6,13 +6,6 @@ new File(templeRoot, 'gradle.properties').withReader('UTF-8') { identity.load(it
 identity.each { key, value ->
     if (!project.hasProperty(key.toString())) ext.set(key.toString(), value.toString())
 }
-def localSettings = new File(templeRoot, 'temple.local.properties')
-if (localSettings.isFile() && !project.hasProperty('kuiJar')) {
-    def local = new Properties()
-    localSettings.withReader('UTF-8') { local.load(it) }
-    def configuredJar = local.getProperty("kuiJar.${project.projectDir.name}", local.getProperty('kuiJar'))
-    if (configuredJar) ext.kuiJar = configuredJar
-}
 group = mod_group_id
 version = mod_version
 
@@ -33,11 +26,17 @@ repositories {
         content {
             includeGroup 'xaero.map'
             includeGroup 'xaero.lib'
+            includeGroup 'xaero.minimap'
         }
     }
 }
 
-// Supply the matching local KUI target JAR containing the basic chunk rendering API.
+def minimapLoader = projectDir.name.substring(0, projectDir.name.indexOf('-'))
+def minimapVersion = minecraft_version.startsWith('26.') ? '26.6.2' : '26.6.0'
+def minimapClassifier = minimapLoader == 'forge' ? ':dev' : ''
+def minimapConfiguration = minimapLoader == 'fabric' && !minecraft_version.startsWith('26.') ? 'modCompileOnly' : 'compileOnly'
+dependencies.add(minimapConfiguration, "xaero.minimap:xaerominimap-${minimapLoader}-${xaero_mc_version}:${minimapVersion}${minimapClassifier}")
+
 if (project.hasProperty('kuiJar')) {
     def localKuiJar = file(project.property('kuiJar'))
     if (!localKuiJar.isFile()) {

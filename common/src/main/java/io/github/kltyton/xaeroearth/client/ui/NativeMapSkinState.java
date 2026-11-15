@@ -277,7 +277,8 @@ abstract class NativeMapSkinState {
                     slider.setHover(hovered);
                     Element label = root.querySelector(".mc-form-field__label");
                     Element field = root.querySelector(".mc-form-field");
-                    if (label != null && field != null) fitCaption(field, label, label.getTextContent());
+                    if (label != null && field != null) fitCaption(field, label, label.getTextContent(),
+                            Text.of(label).fontSize);
                 }
                 if (input != null) input.setActive(pressed);
             } else {
@@ -286,7 +287,8 @@ abstract class NativeMapSkinState {
                     button.setHover(hovered);
                     button.setActive(pressed);
                     if (!(widget instanceof GuiTexturedButton)) {
-                        fitCaption(button, root.querySelector(".mc-button__content"), widget.getMessage().getString());
+                        double fontSize = widget.getHeight() * 9.0 / 20.0 / document.getViewport().renderScale();
+                        fitCaption(button, root.querySelector(".mc-button__content"), widget.getMessage().getString(), fontSize);
                     }
                 }
             }
@@ -296,6 +298,12 @@ abstract class NativeMapSkinState {
             Element label = document.querySelector("[data-native-key=\"" + key + "\"]");
             Element button = label == null ? null : label.closest(".mc-list__item");
             if (button != null) {
+                double height = 11.0 / document.getViewport().renderScale();
+                inlineSize(button, "height", height);
+                inlineSize(button, "min-height", height);
+                inlineSize(button, "max-height", height);
+                inlineSize(label, "font-size", height * 8 / 11);
+                inlineSize(label, "line-height", height);
                 button.setHover(slot.visible() && slot.active() && slot.hovered() && !hidden());
                 button.setActive(slot.visible() && slot.active() && key.equals(pressedKey) && !hidden());
             }
@@ -306,11 +314,16 @@ abstract class NativeMapSkinState {
         return "slot-" + slot.dropdownId() + "-" + slot.ordinal();
     }
 
-    protected static void fitCaption(Element control, Element caption, String label) {
+    private static void inlineSize(Element element, String property, double size) {
+        String value = Double.toString(size) + "px";
+        if (!value.equals(element.getInlineStylePropertyValue(property))) element.setInlineStyleProperty(property, value);
+    }
+
+    protected static void fitCaption(Element control, Element caption, String label, double fontSize) {
         if (caption == null || label.isEmpty()) return;
         Text actual = Text.of(caption);
         Text measuring = new Text();
-        measuring.fontSize = Text.of(control).fontSize;
+        measuring.fontSize = fontSize;
         measuring.fontFamily = actual.fontFamily;
         measuring.fontWeight = actual.fontWeight;
         measuring.oblique = actual.oblique;
@@ -322,11 +335,8 @@ abstract class NativeMapSkinState {
         if (value != null) {
             available -= Text.measureLine(Text.of(value), value.getTextContent()) + measuring.fontSize / 2;
         }
-        if (width <= 0 || available <= 0) return;
-        String fittedSize = Double.toString(measuring.fontSize * Math.min(1.0, available / width)) + "px";
-        if (!fittedSize.equals(caption.getInlineStylePropertyValue("font-size"))) {
-            caption.setInlineStyleProperty("font-size", fittedSize);
-        }
+        if (width <= 0) return;
+        inlineSize(caption, "font-size", fontSize * (available > 0 ? Math.min(1.0, available / width) : 1.0));
     }
 
     public static void suspend() {
@@ -386,7 +396,7 @@ abstract class NativeMapSkinState {
             control.addProperty("dock", docks.getOrDefault(widget, ""));
             control.addProperty("primary", "gui.done".equals(translationKey));
             control.addProperty("selected", viewButton && translationKey.equals(
-                    "xaeroearth.view." + EarthPreferences.VIEW.get().name().toLowerCase(Locale.ROOT)));
+                    "xaeroearth.view." + NativeMapInput.view().name().toLowerCase(Locale.ROOT)));
             control.addProperty("x", NativeMapSkin.x(widget) / documentScale);
             control.addProperty("y", NativeMapSkin.y(widget) / documentScale);
             control.addProperty("width", widget.getWidth() / documentScale);

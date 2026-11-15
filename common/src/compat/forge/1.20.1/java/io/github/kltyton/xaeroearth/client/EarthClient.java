@@ -1,5 +1,9 @@
 package io.github.kltyton.xaeroearth.client;
 
+import com.mojang.blaze3d.systems.RenderSystem;
+import io.github.kltyton.xaeroearth.client.render.navigation.NavigationRenderer;
+import net.minecraftforge.client.event.RenderLevelStageEvent;
+
 import io.github.kltyton.xaeroearth.client.bridge.XaeroMapBridge;
 import io.github.kltyton.xaeroearth.client.ui.NativeMapSkin;
 import io.github.kltyton.xaeroearth.client.ui.NativeMapTerrain;
@@ -18,6 +22,8 @@ import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.GameShuttingDownEvent;
 import net.minecraftforge.event.level.ChunkEvent;
+import org.joml.Matrix3f;
+import org.joml.Matrix4f;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import xaero.map.gui.GuiMap;
@@ -25,6 +31,7 @@ import xaero.map.gui.GuiMap;
 /** Adds the camera selector while the original GuiMap owns its complete lifecycle. */
 public final class EarthClient extends EarthClientState {
     public static void initialize() {
+        MinecraftForge.EVENT_BUS.addListener(EarthClient::renderNavigation);
         MinecraftForge.EVENT_BUS.addListener(EarthClient::onMapInit);
         MinecraftForge.EVENT_BUS.addListener(EarthClient::onTick);
         MinecraftForge.EVENT_BUS.addListener(EarthClient::onScreenOpening);
@@ -32,6 +39,13 @@ public final class EarthClient extends EarthClientState {
         MinecraftForge.EVENT_BUS.addListener(EarthClient::onScreenRenderPost);
         MinecraftForge.EVENT_BUS.addListener(EarthClient::onStopping);
         MinecraftForge.EVENT_BUS.addListener(EarthClient::onChunkLoad);
+    }
+
+    private static void renderNavigation(RenderLevelStageEvent event) {
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_LEVEL) return;
+        // Forge passes the projection PoseStack at AFTER_LEVEL. The renderer publishes the actual world rotation separately.
+        var view = new Matrix4f().set(new Matrix3f(RenderSystem.getInverseViewRotationMatrix()).invert());
+        NavigationRenderer.draw(view, event.getProjectionMatrix(), event.getCamera().getPosition());
     }
 
     private static void onMapInit(ScreenEvent.Init.Post event) {

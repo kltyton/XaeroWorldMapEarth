@@ -59,16 +59,18 @@ public final class SurfaceRenderer implements AutoCloseable {
                 || next.heights().length != cells || next.rgba().length != Math.multiplyExact(cells, 4)) {
             throw new IllegalArgumentException("Invalid surface dimensions");
         }
-        if (color == null || color.getWidth(0) != next.width() || color.getHeight(0) != next.depth()) {
+        int heightRows = next.heightTextureRows();
+        if (color == null || color.getWidth(0) != next.width() || color.getHeight(0) != next.depth()
+                || height.getHeight(0) != heightRows) {
             releaseTextures();
             var device = RenderSystem.getDevice();
             int usage = GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_COPY_DST;
             color = device.createTexture(() -> "KUI surface color", usage, TextureFormat.RGBA8, next.width(), next.depth(), 1, 1);
-            height = device.createTexture(() -> "KUI surface height", usage, TextureFormat.RGBA8, next.width(), next.depth(), 1, 1);
+            height = device.createTexture(() -> "KUI surface height", usage, TextureFormat.RGBA8, next.width(), heightRows, 1, 1);
             colorView = device.createTextureView(color);
             heightView = device.createTextureView(height);
         }
-        int bytes = Math.multiplyExact(cells, 4);
+        int bytes = Math.multiplyExact(next.width() * heightRows, Float.BYTES);
         if (upload == null || upload.capacity() < bytes) {
             if (upload != null) MemoryUtil.memFree(upload);
             upload = MemoryUtil.memAlloc(bytes).order(ByteOrder.LITTLE_ENDIAN);
@@ -78,9 +80,9 @@ public final class SurfaceRenderer implements AutoCloseable {
         upload.put(next.rgba()).flip();
         encoder.writeToTexture(color, upload, NativeImage.Format.RGBA, 0, 0, 0, 0, next.width(), next.depth());
         upload.clear();
-        for (int y : next.heights()) upload.putFloat(y + 1.0f);
+        next.writeHeights(upload);
         upload.flip();
-        encoder.writeToTexture(height, upload, NativeImage.Format.RGBA, 0, 0, 0, 0, next.width(), next.depth());
+        encoder.writeToTexture(height, upload, NativeImage.Format.RGBA, 0, 0, 0, 0, next.width(), heightRows);
         surface = next;
     }
 
@@ -91,8 +93,8 @@ public final class SurfaceRenderer implements AutoCloseable {
         if (closed || surface == null) return false;
         parameters.endFrame();
         var values = parameters.writeUniform(new Parameters(surface.width(), surface.depth(), surface.step(), brightness,
-                (float) (camera.x() - coverageChunkX * 16L), (float) (camera.z() - coverageChunkZ * 16L),
-                (float) (surface.x() - camera.x()), (float) -camera.y(), (float) (surface.z() - camera.z())));
+                (float) (camera.x() - coverageChunkX * 16L), (float) (camera.z() - coverageChunkZ * 16L), surface.patches().length, surface.patches().length + surface.outline().length,
+                (float) (surface.x() - camera.x()), (float) -camera.y(), (float) (surface.z() - camera.z()), surface.floor()));
         var transform = RenderSystem.getDynamicUniforms().writeTransform(new Matrix4f(camera.viewMatrix()),
                 new Vector4f(1, 1, 1, 1), new Vector3f(), new Matrix4f());
         var previousProjection = RenderSystem.getProjectionMatrixBuffer();
@@ -101,7 +103,7 @@ public final class SurfaceRenderer implements AutoCloseable {
                 camera.mode().equals("street") ? ProjectionType.PERSPECTIVE : ProjectionType.ORTHOGRAPHIC);
         OptionalInt clearColor = clear ? OptionalInt.of(underground ? 0xFF000000 : 0xFF75ABD1) : OptionalInt.empty();
         try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> "KUI continuous terrain surface",
-                target.getColorTextureView(), clearColor, target.getDepthTextureView(), clear ? OptionalDouble.of(1) : OptionalDouble.empty())) {
+                target.getColorTextureView(), clearColor, target.getDepthTextureView(), OptionalDouble.of(1))) {
             pass.setPipeline(PIPELINE);
             RenderSystem.bindDefaultUniforms(pass);
             pass.setUniform("DynamicTransforms", transform);
@@ -110,7 +112,7 @@ public final class SurfaceRenderer implements AutoCloseable {
             pass.bindTexture("SurfaceColor", colorView, RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
             pass.bindTexture("SurfaceHeight", heightView, sampler);
             pass.bindTexture("Coverage", coverage, sampler);
-            pass.draw(0, Math.multiplyExact(surface.width() * surface.depth(), 6));
+            pass.draw(0, surface.vertexCount());
         } finally {
             RenderSystem.setProjectionMatrix(previousProjection, previousType);
         }
@@ -144,13 +146,13 @@ public final class SurfaceRenderer implements AutoCloseable {
         parameters.close();
     }
 
-    private record Parameters(float width, float depth, float step, float brightness, float coverageX, float coverageZ,
-                              float originX, float originY, float originZ)
+    private record Parameters(float width, float depth, float step, float brightness, float coverageX, float coverageZ, float patchCount, float outlineEnd,
+                              float originX, float originY, float originZ, float floor)
             implements DynamicUniformStorage.DynamicUniform {
         @Override public void write(ByteBuffer buffer) {
             buffer.putFloat(width).putFloat(depth).putFloat(step).putFloat(brightness);
-            buffer.putFloat(coverageX).putFloat(coverageZ).putFloat(0).putFloat(0);
-            buffer.putFloat(originX).putFloat(originY).putFloat(originZ).putFloat(0);
+            buffer.putFloat(coverageX).putFloat(coverageZ).putFloat(patchCount).putFloat(outlineEnd);
+            buffer.putFloat(originX).putFloat(originY).putFloat(originZ).putFloat(floor);
         }
     }
 }

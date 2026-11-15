@@ -24,7 +24,8 @@ final class SurfaceRenderer implements AutoCloseable {
         if (next.width() < 1 || next.depth() < 1 || next.step() < 1 || next.heights().length != cells
                 || next.rgba().length != Math.multiplyExact(cells, 4)) throw new IllegalArgumentException("Invalid surface dimensions");
         if (color == 0) { color = GL11.glGenTextures(); height = GL11.glGenTextures(); }
-        int bytes = Math.multiplyExact(cells, 4);
+        int heightRows = next.heightTextureRows();
+        int bytes = Math.multiplyExact(next.width() * heightRows, Float.BYTES);
         if (upload == null || upload.capacity() < bytes) {
             if (upload != null) MemoryUtil.memFree(upload);
             upload = MemoryUtil.memAlloc(bytes).order(ByteOrder.nativeOrder());
@@ -38,10 +39,10 @@ final class SurfaceRenderer implements AutoCloseable {
         texture(color, GL11.GL_LINEAR);
         GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, next.width(), next.depth(), 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, upload);
         upload.clear();
-        for (int y : next.heights()) upload.putFloat(y + 1.0F);
+        next.writeHeights(upload);
         upload.flip();
         texture(height, GL11.GL_NEAREST);
-        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL30.GL_R32F, next.width(), next.depth(), 0, GL11.GL_RED, GL11.GL_FLOAT, upload);
+        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL30.GL_R32F, next.width(), heightRows, 0, GL11.GL_RED, GL11.GL_FLOAT, upload);
         surface = next;
     }
 
@@ -51,8 +52,9 @@ final class SurfaceRenderer implements AutoCloseable {
         shader.matrix("ProjMat", camera.projectionMatrix());
         shader.matrix("ModelViewMat", camera.viewMatrix());
         shader.vector("Grid", surface.width(), surface.depth(), surface.step(), brightness);
-        shader.vector("CoverageRegion", (float) (camera.x() - coverageX * 16L), (float) (camera.z() - coverageZ * 16L), 0, 0);
-        shader.vector("SurfaceOrigin", (float) (surface.x() - camera.x()), (float) -camera.y(), (float) (surface.z() - camera.z()), 0);
+        shader.vector("CoverageRegion", (float) (camera.x() - coverageX * 16L), (float) (camera.z() - coverageZ * 16L), surface.patches().length, surface.patches().length + surface.outline().length);
+        shader.vector("SurfaceOrigin", (float) (surface.x() - camera.x()), (float) -camera.y(),
+                (float) (surface.z() - camera.z()), surface.floor());
         int[] textures = {color, height, coverage};
         String[] samplers = {"SurfaceColor", "SurfaceHeight", "Coverage"};
         for (int i = 0; i < textures.length; i++) {
@@ -61,7 +63,7 @@ final class SurfaceRenderer implements AutoCloseable {
             shader.sampler(samplers[i], i);
         }
         GlStateManager._glBindVertexArray(vertices);
-        GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, Math.multiplyExact(Math.multiplyExact(surface.width(), surface.depth()), 6));
+        GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, surface.vertexCount());
         return true;
     }
 

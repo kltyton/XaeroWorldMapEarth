@@ -3,6 +3,6 @@
   "minVersion": "0.8",
   "package": "io.github.kltyton.xaeroearth.client.mixin",
   "compatibilityLevel": "JAVA_25",
-  "client": ["GuiMapAccess", "GuiMapMixin", "GuiTexturedButtonMixin", "AbstractSliderButtonAccess", "AbstractSliderButtonMixin", "GuiMapEntityIndicatorMixin", "TrackedPlayerEntityIndicatorMixin", "MinimapRadarEntityMixin", "XaeroTooltipLayerMixin", "GuiGraphicsTooltipLayerMixin", "ClientChunkMutationMixin", "DropdownSkinMixin", "MapElementProjectionMixin", "IntegratedServerChatRefreshMixin"],
+  "client": ["GuiMapAccess", "GuiMapMixin", "NavigationKeyboardMixin", "NavigationMouseMixin", "NavigationCameraMixin", "NavigationWorldRenderMixin", "GuiTexturedButtonMixin", "AbstractSliderButtonAccess", "AbstractSliderButtonMixin", "GuiMapEntityIndicatorMixin", "TrackedPlayerEntityIndicatorMixin", "MinimapRadarEntityMixin", "KuiTerrainUniformsMixin", "MinimapTerrainMixin", "MinimapCameraZoomMixin", "MinimapMarkerProjectionMixin", "XaeroTooltipLayerMixin", "GuiGraphicsTooltipLayerMixin", "ClientChunkMutationMixin", "DropdownSkinMixin", "MapElementProjectionMixin", "IntegratedServerChatRefreshMixin"],
   "injectors": {"defaultRequire": 1}
 }

@@ -1,5 +1,8 @@
 package io.github.kltyton.xaeroearth.client;
 
+import io.github.kltyton.xaeroearth.client.render.navigation.NavigationRenderer;
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+
 import io.github.kltyton.xaeroearth.client.bridge.XaeroMapBridge;
 import io.github.kltyton.xaeroearth.client.ui.NativeMapSkin;
 import io.github.kltyton.xaeroearth.client.ui.NativeMapTerrain;
@@ -25,6 +28,7 @@ import xaero.map.gui.GuiMap;
 /** Adds the camera selector while the original GuiMap owns its complete lifecycle. */
 public final class EarthClient extends EarthClientState {
     public static void initialize() {
+        NeoForge.EVENT_BUS.addListener(EarthClient::renderNavigation);
         NeoForge.EVENT_BUS.addListener(EarthClient::onMapInit);
         NeoForge.EVENT_BUS.addListener(EarthClient::onTick);
         NeoForge.EVENT_BUS.addListener(EarthClient::onScreenOpening);
@@ -32,6 +36,11 @@ public final class EarthClient extends EarthClientState {
         NeoForge.EVENT_BUS.addListener(EarthClient::onScreenRenderPost);
         NeoForge.EVENT_BUS.addListener(EarthClient::onStopping);
         NeoForge.EVENT_BUS.addListener(EarthClient::onChunkLoad);
+    }
+
+    private static void renderNavigation(RenderLevelStageEvent event) {
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_LEVEL) return;
+        NavigationRenderer.draw(event.getModelViewMatrix(), event.getProjectionMatrix(), event.getCamera().getPosition());
     }
 
     private static void onMapInit(ScreenEvent.Init.Post event) {

@@ -1,5 +1,11 @@
 {
   "xaeroearth.view.isometric": "Isometric",
   "xaeroearth.view.top": "Top-down",
-  "xaeroearth.view.street": "Street"
+  "xaeroearth.view.street": "Free view",
+  "xaeroearth.navigation.start": "Auto-navigate here",
+  "xaeroearth.navigation.guide": "Navigate here",
+  "xaeroearth.navigation.auto_distance": "Auto-navigation · %s m to destination · Esc to cancel",
+  "xaeroearth.navigation.guide_distance": "Navigation · %s m to destination · Esc to clear",
+  "xaeroearth.navigation.unreachable": "No walkable route is currently available.",
+  "xaeroearth.navigation.companion_unavailable": "Could not send the companion movement request."
 }

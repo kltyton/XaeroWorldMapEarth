@@ -1,12 +1,14 @@
 package io.github.kltyton.xaeroearth.client.ui;
 
 import io.github.kltyton.xaeroearth.client.chunkmap.MapCamera;
+import io.github.kltyton.xaeroearth.client.chunkmap.MapTerrainHit;
 import io.github.kltyton.xaeroearth.client.chunkmap.ActiveMapResources;
 import io.github.kltyton.xaeroearth.client.chunkmap.NativeTerrainScene;
 import io.github.kltyton.xaeroearth.client.EarthPreferences;
 import io.github.kltyton.xaeroearth.client.bridge.XaeroMapBridge;
 import io.github.kltyton.xaeroearth.client.mixin.GuiMapAccess;
 import net.minecraft.client.Minecraft;
+import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3f;
 import xaero.map.gui.GuiMap;
 
@@ -34,14 +36,14 @@ public final class NativeMapTerrain extends TerrainAccess {
         bridge = data;
         if (installedScene != data.sceneKey()) {
             renderer.resetSurface();
-            NativeMapInput.reset(); viewMode = null; camera = null;
+            NativeMapInput.close(map); viewMode = null; camera = null;
             installedScene = data.sceneKey();
         }
         var access = (GuiMapAccess) map;
         NativeMapInput.prepare(map);
         Minecraft minecraft = Minecraft.getInstance();
-        double scale = access.earth$scale() / minecraft.getWindow().getGuiScale();
-        String mode = EarthPreferences.VIEW.get().name().toLowerCase(java.util.Locale.ROOT);
+        double scale = NativeMapInput.worldMapScale(map);
+        String mode = NativeMapInput.view().name().toLowerCase(java.util.Locale.ROOT);
         if (!mode.equals(viewMode)) { viewMode = mode; if (mode.equals("street")) streetScale = access.earth$scale(); }
         double height = data.heightAt(access.earth$cameraX(), access.earth$cameraZ(),
                 minecraft.player == null ? 64 : minecraft.player.blockPosition().getY());
@@ -61,10 +63,16 @@ public final class NativeMapTerrain extends TerrainAccess {
         transparentPending = true;
     }
 
-    public static void finishTerrain() {
+    public static void finishTerrain(GuiMap map) {
         if (renderer == null || !transparentPending) return;
         try {
-            renderer.drawTransparent();
+            var level = Minecraft.getInstance().level;
+            var processor = map.getMapProcessor();
+            boolean showNavigation = !GuiMap.hiddenUI && level != null && processor != null && processor.getWorld() == level
+                    && processor.getMapWorld() != null
+                    && processor.isCurrentMultiworldWritable() && !processor.isConsideringNetherFairPlay()
+                    && level.dimension().equals(processor.getMapWorld().getCurrentDimensionId());
+            renderer.drawTransparent(showNavigation);
         } finally {
             transparentPending = false;
         }
@@ -79,23 +87,23 @@ public final class NativeMapTerrain extends TerrainAccess {
         return camera == null ? null : camera.project(x, y, z);
     }
 
-    public static net.minecraft.world.phys.Vec3 pick(double screenX, double screenY) {
-        if (camera == null || bridge == null) return null;
-        var ray = camera.ray(screenX, screenY);
-        if (Math.abs(ray[1].y) < 0.00001) return null;
-        double distance = (0 - ray[0].y) / ray[1].y;
-        for (int i = 0; i < 12; i++) {
-            double x = camera.x() + ray[0].x + ray[1].x * distance;
-            double z = camera.z() + ray[0].z + ray[1].z * distance;
-            double terrainY = bridge.heightAt(x, z, (int) camera.y()) + 1;
-            double next = (terrainY - camera.y() - ray[0].y) / ray[1].y;
-            if (Math.abs(next - distance) < 0.01) {
-                if (next < 0) return null;
-                return new net.minecraft.world.phys.Vec3(x, terrainY, z);
-            }
-            distance = next;
+    public static Vec3 pick(double x, double y) {
+        return camera == null || bridge == null ? null : MapTerrainHit.pick(camera, bridge, renderer, x, y);
+    }
+
+    public static Vec3 pickKnown(double x, double y) { return pick(x, y); }
+
+    /** Shares the visible hit between the tooltip and the native context menu. */
+    public static Vec3 updatePointer(GuiMap map, double screenX, double screenY) {
+        if (camera == null || !io.github.kltyton.xaeroearth.client.EarthClient.themed(map)) return null;
+        var point = pick(screenX, screenY);
+        var access = (GuiMapAccess) map;
+        if (point != null) {
+            access.earth$mouseX((int) Math.floor(point.x));
+            access.earth$mouseZ((int) Math.floor(point.z));
         }
-        return null;
+        access.earth$mouseY(point == null ? Short.MAX_VALUE : (int) Math.ceil(point.y - 1e-5) - 1);
+        return point;
     }
 
     public static boolean active() { return camera != null; }

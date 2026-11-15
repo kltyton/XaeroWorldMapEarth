@@ -1,6 +1,9 @@
 package io.github.kltyton.xaeroearth.client.mixin;
 
 import io.github.kltyton.xaeroearth.client.EarthClient;
+import io.github.kltyton.xaeroearth.client.integration.companion.CompanionMapSelection;
+import io.github.kltyton.xaeroearth.client.integration.companion.CompanionPortraits;
+import io.github.kltyton.xaeroearth.client.navigation.MapNavigationOption;
 import io.github.kltyton.xaeroearth.client.ui.NativeMapSkin;
 import io.github.kltyton.xaeroearth.client.ui.NativeMapInput;
 import io.github.kltyton.xaeroearth.client.ui.NativeMapTerrain;
@@ -22,6 +25,8 @@ import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import xaero.map.gui.GuiMap;
+import xaero.map.gui.dropdown.rightclick.RightClickOption;
+import java.util.ArrayList;
 
 /** Inserts KUI terrain before Xaero's original marker pass and skins the existing controls. */
 @Mixin(value = GuiMap.class)
@@ -52,11 +57,20 @@ public abstract class GuiMapMixin {
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void earth$mouseDown(double mouseX, double mouseY, int button, CallbackInfoReturnable<Boolean> callback) {
+        if (button == 1) NativeMapTerrain.updatePointer((GuiMap) (Object) this, mouseX, mouseY);
+        if (button == 0 && CompanionMapSelection.press((GuiMap) (Object) this, mouseX, mouseY, GuiMap.hasShiftDown())) {
+            callback.setReturnValue(true);
+            return;
+        }
         if (NativeMapInput.mouseClicked((GuiMap) (Object) this, mouseX, mouseY, button)) callback.setReturnValue(true);
     }
 
     @Inject(method = "mouseReleased", at = @At("HEAD"), cancellable = true)
     private void earth$mouseUp(double mouseX, double mouseY, int button, CallbackInfoReturnable<Boolean> callback) {
+        if (button == 0 && CompanionMapSelection.release((GuiMap) (Object) this, mouseX, mouseY)) {
+            callback.setReturnValue(true);
+            return;
+        }
         if (NativeMapInput.mouseReleased((GuiMap) (Object) this, mouseX, mouseY, button)) callback.setReturnValue(true);
     }
 
@@ -76,16 +90,6 @@ public abstract class GuiMapMixin {
         EarthClient.drawTerrain((GuiMap) (Object) this);
     }
 
-    @Inject(method = "render", at = @At(value = "FIELD", remap = false, target = "Lxaero/map/gui/GuiMap;mouseBlockPosZ:I", opcode = Opcodes.PUTFIELD, ordinal = 0, shift = At.Shift.AFTER))
-    private void earth$coordinates(GuiGraphics graphics, int x, int y, float ticks, CallbackInfo callback) {
-        if (!EarthClient.themed((GuiMap) (Object) this)) return;
-        var point = NativeMapTerrain.pick(x, y);
-        if (point == null) return;
-        var access = (GuiMapAccess) this;
-        access.earth$mouseX((int) Math.floor(point.x)); access.earth$mouseZ((int) Math.floor(point.z));
-        access.earth$mouseY((int) Math.floor(point.y));
-    }
-
     @WrapOperation(method = "render", at = @At(value = "INVOKE", remap = false, target = "Lxaero/map/element/MapElementRenderHandler;render(Lxaero/map/gui/GuiMap;Lnet/minecraft/client/gui/GuiGraphics;Lnet/minecraft/client/renderer/MultiBufferSource$BufferSource;Lxaero/map/graphics/renderer/multitexture/MultiTextureRenderTypeRendererProvider;DDIIDDDDDFZLxaero/map/element/HoveredMapElementHolder;Lnet/minecraft/client/Minecraft;F)Lxaero/map/element/HoveredMapElementHolder;"))
     private HoveredMapElementHolder<?, ?> earth$hover(MapElementRenderHandler handler, GuiMap map,
             GuiGraphics graphics, MultiBufferSource.BufferSource buffers,
@@ -94,7 +98,7 @@ public abstract class GuiMapMixin {
             double mouseX, double mouseZ, float elementScale, boolean shadow,
             HoveredMapElementHolder<?, ?> hovered, Minecraft minecraft, float partialTicks,
             Operation<HoveredMapElementHolder<?, ?>> original) {
-        var point = NativeMapTerrain.pick(earth$mouseX, earth$mouseY);
+        var point = NativeMapTerrain.updatePointer(map, earth$mouseX, earth$mouseY);
         if (point != null) { mouseX = point.x; mouseZ = point.z; }
         boolean capture = EarthClient.themed(map) && NativeMapTerrain.active();
         if (capture) NativeMapElementLayer.begin(minecraft.getMainRenderTarget());
@@ -128,10 +132,17 @@ public abstract class GuiMapMixin {
     @Inject(method = "render", at = @At("RETURN"))
     private void earth$skin(GuiGraphics graphics, int x, int y, float ticks, CallbackInfo callback) {
         if (EarthClient.themed((GuiMap) (Object) this)) NativeMapSkin.render((GuiMap) (Object) this, graphics, x, y);
+        CompanionPortraits.draw((GuiMap) (Object) this, graphics, x, y, ticks);
+    }
+
+    @Inject(method = "getRightClickOptions", at = @At("RETURN"), remap = false)
+    private void earth$navigationOption(CallbackInfoReturnable<ArrayList<RightClickOption>> callback) {
+        MapNavigationOption.add((GuiMap) (Object) this, callback.getReturnValue());
     }
 
     @Inject(method = "removed", at = @At("HEAD"))
     private void earth$close(CallbackInfo callback) {
+        CompanionMapSelection.clear();
         NativeMapInput.close((GuiMap) (Object) this);
         EarthClient.closeMap((GuiMap) (Object) this);
     }

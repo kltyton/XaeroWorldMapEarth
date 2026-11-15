@@ -5,6 +5,18 @@ import java.util.Map;
 
 public final class UiText {
     private static final Map<String, String[]> WORDS = Map.ofEntries(
+            Map.entry("sourceLayoutTitle", new String[]{"源码目录需要处理", "Source layout needs attention"}),
+            Map.entry("sourceModelMissing", new String[]{"缺少目标源码模型", "Missing target source model"}),
+            Map.entry("sourceModelStale", new String[]{"目标源码模型已过期", "Stale target source model"}),
+            Map.entry("sourceModelInvalid", new String[]{"目标源码模型无效", "Invalid target source model"}),
+            Map.entry("sourceSelectionMissing", new String[]{"编辑目标不存在", "Editing target does not exist"}),
+            Map.entry("sourceModuleMissing", new String[]{"目标 common 模块尚未导入", "Target common module has not been imported"}),
+            Map.entry("sourceUnassigned", new String[]{"没有目标使用此源码或资源路径", "No target uses this source or resource path"}),
+            Map.entry("sourceDuplicate", new String[]{"同一目标包含重复 Java 路径", "Duplicate Java path in one target"}),
+            Map.entry("sourceReadFailed", new String[]{"无法读取源码模型，详情见 IDEA 日志。", "Could not read source models. See the IDEA log for details."}),
+            Map.entry("sourceAssignmentFailed", new String[]{"无法更新源码归属，详情见 IDEA 日志。", "Could not update source ownership. See the IDEA log for details."}),
+            Map.entry("sourceMore", new String[]{"问题总数，完整清单见 verifySourceLayout 输出", "Total issues; see verifySourceLayout for the complete list"}),
+            Map.entry("sourceLayoutHint", new String[]{"模型缺失或过期时同步所有 Gradle 项目；无归属目录须在 common 构建中接入对应目标。不要把不同 API 的适配文件全部标到一个 SDK 下。规则见 docs/dev/source-layout.md，完整清单可运行 verifySourceLayout。", "Sync all Gradle projects for missing or stale models. Assign unowned paths to matching targets in the common build. Keep incompatible API variants on their own SDKs. See docs/dev/source-layout.en.md; run verifySourceLayout for the complete list."}),
             Map.entry("language", new String[]{"界面语言", "Language"}),
             Map.entry("buildDsl", new String[]{"Gradle 脚本语言", "Gradle script language"}),
             Map.entry("defaultTarget", new String[]{"默认编辑目标", "Default editing target"}),

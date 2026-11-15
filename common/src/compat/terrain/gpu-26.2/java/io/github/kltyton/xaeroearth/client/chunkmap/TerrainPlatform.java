@@ -24,6 +24,10 @@ abstract class TerrainPlatform {
     protected final SurfaceRenderer surfaceRenderer = new SurfaceRenderer();
     protected DynamicTexture coverage;
 
+    protected void drawNavigation(RenderTarget target, MapCamera camera) {
+        io.github.kltyton.xaeroearth.client.render.navigation.NavigationRenderer.drawMap(target, camera);
+    }
+
     protected boolean drawSurface(MapCamera camera, NativeTerrainScene.Surface surface, RenderTarget target,
                                   float brightness, boolean underground, Runnable updateCoverage,
                                   IntSupplier coverageX, IntSupplier coverageZ) {

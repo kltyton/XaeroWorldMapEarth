@@ -13,34 +13,9 @@ apply plugin: 'fabric-loom'
 apply plugin: 'me.modmuss50.mod-publish-plugin'
 apply from: '../../gradle/target-conventions/fabric.gradle'
 
-if (!project.hasProperty('kuiJar')) {
-    throw new GradleException('This target requires -PkuiJar=<matching remapped Fabric KUI JAR with the basic chunk rendering API>')
-}
-def localKuiJar = file(project.property('kuiJar'))
-def kuiVersion
-new java.util.jar.JarFile(localKuiJar).withCloseable { archive ->
-    archive.getInputStream(archive.getEntry('fabric.mod.json')).withCloseable { metadata ->
-        kuiVersion = new groovy.json.JsonSlurper().parse(metadata).version.toString()
-    }
-    ['io/github/kltyton/kltytonui/chunkmap/KuiNativeTerrainRenderer.class',
-     'io/github/kltyton/kltytonui/chunkmap/KuiNativeTerrainRenderer$Draw.class',
-     'io/github/kltyton/kltytonui/chunkmap/KuiNativeTerrainRenderer$GpuMesh.class',
-     'io/github/kltyton/kltytonui/chunkmap/KuiChunkMeshBaker.class',
-     'io/github/kltyton/kltytonui/chunkmap/KuiNativeMesh.class',
-     'fabric.mod.json'].each { entry ->
-        if (archive.getEntry(entry) == null) throw new GradleException("Missing Fabric chunk rendering API: ${entry}")
-    }
-}
 loom { mixin { defaultRefmapName = 'xaeroearth.refmap.json' } }
-repositories {
-    maven { url = 'https://maven.latvian.dev/releases' }
-    flatDir { dirs localKuiJar.parentFile }
-}
 dependencies {
     modImplementation 'net.fabricmc.fabric-api:fabric-api:0.92.6+1.20.1'
-    modRuntimeOnly files(localKuiJar)
-    include(group: 'io.github.kltyton.kltytonui', name: localKuiJar.name - '.jar', version: kuiVersion)
-    include modImplementation('dev.latvian.mods:rhino-fabric:2001.2.3-build.10')
 }
 
 loom { accessWidenerPath = file('src/main/resources/xaeroearth.accesswidener') }

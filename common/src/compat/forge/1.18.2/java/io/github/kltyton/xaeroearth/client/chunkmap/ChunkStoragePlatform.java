@@ -87,30 +87,30 @@ final class ChunkStoragePlatform extends StoredChunkSource<ChunkStoragePlatform.
         return level.getChunkSource().getChunk(x, z, ChunkStatus.FULL, false) != null;
     }
 
-    ChunkCopy loaded(int x, int z) {
+    ChunkCopy loaded(int x, int z, int floor, int ceiling) {
         LevelChunk live = level.getChunkSource().getChunk(x, z, ChunkStatus.FULL, false);
         if (live != null) return copy(live,
-                level.registryAccess().registryOrThrow(Registry.BIOME_REGISTRY));
+                level.registryAccess().registryOrThrow(Registry.BIOME_REGISTRY), floor, ceiling);
         return null;
     }
 
-    @Override protected ChunkCopy copyLoaded(StoredContext context, int x, int z) {
+    @Override protected ChunkCopy copyLoaded(StoredContext context, int x, int z, int floor, int ceiling) {
         var world = context.server.getLevel(level.dimension());
         if (world == null) return (ChunkCopy) null;
         LevelChunk current = world.getChunkSource().getChunkNow(x, z);
-        return current == null ? null : copy(current, world.registryAccess().registryOrThrow(Registry.BIOME_REGISTRY));
+        return current == null ? null : copy(current, world.registryAccess().registryOrThrow(Registry.BIOME_REGISTRY), floor, ceiling);
     }
 
-    @Override protected CompletableFuture<ChunkCopy> readStored(StoredContext context, int x, int z) {
+    @Override protected CompletableFuture<ChunkCopy> readStored(StoredContext context, int x, int z, int floor, int ceiling) {
         try {
             return CompletableFuture.completedFuture(decode(context,
-                    Optional.ofNullable(context.storage.read(new ChunkPos(x, z)))));
+                    Optional.ofNullable(context.storage.read(new ChunkPos(x, z))), floor, ceiling));
         } catch (java.io.IOException failure) {
             return CompletableFuture.failedFuture(failure);
         }
     }
 
-    private ChunkCopy decode(StoredContext context, Optional<CompoundTag> tag) {
+    private ChunkCopy decode(StoredContext context, Optional<CompoundTag> tag, int floor, int ceiling) {
         if (closed.get() || tag.isEmpty()) return null;
         CompoundTag upgraded = tag.get().copy();
         ChunkStorage.injectDatafixingContext(upgraded, context.dimension, context.generatorType);
@@ -121,9 +121,12 @@ final class ChunkStoragePlatform extends StoredChunkSource<ChunkStoragePlatform.
                 .filter(status -> status.isOrAfter(ChunkStatus.FULL)).isPresent()) return null;
         var biomeCodec = PalettedContainer.codec(context.biomes.asHolderIdMap(),
                 context.biomes.holderByNameCodec(), PalettedContainer.Strategy.SECTION_BIOMES, context.biomes.getHolderOrThrow(Biomes.PLAINS));
+        var range = storedSectionRange(context.height.getMinSection(), context.height.getSectionsCount(), floor, ceiling,
+                upgraded.getCompound("Heightmaps").getLongArray("WORLD_SURFACE"));
+        if (range.low() > range.high()) return null;
         var sectionTags = upgraded.getList("sections", Tag.TAG_COMPOUND);
         return decodeSections(sectionTags.size(), sectionTags::getCompound, section -> section.getByte("Y"),
-                context.height.getSectionsCount(), context.height.getMinSection(), section -> {
+                context.height.getSectionsCount(), context.height.getMinSection(), range, section -> {
                     PalettedContainer<BlockState> states = section.contains("block_states", Tag.TAG_COMPOUND)
                             ? decodePalette(BLOCK_STATES, context.registryOps, section.getCompound("block_states"))
                             : new PalettedContainer<>(Block.BLOCK_STATE_REGISTRY, Blocks.AIR.defaultBlockState(),
@@ -151,15 +154,18 @@ final class ChunkStoragePlatform extends StoredChunkSource<ChunkStoragePlatform.
         return copy;
     }
 
-    private static ChunkCopy copy(LevelChunk chunk, Registry<Biome> biomes) {
+    private static ChunkCopy copy(LevelChunk chunk, Registry<Biome> biomes, int floor, int ceiling) {
         LevelChunkSection[] source = chunk.getSections();
         SectionCopy[] sections = new SectionCopy[source.length];
-        for (int i = 0; i < source.length; i++) {
+        int minimum = chunk.getMinSection();
+        var range = liveSectionRange(chunk, minimum, source.length, floor, ceiling);
+        for (int y = range.low(); y <= range.high(); y++) {
+            int i = y - minimum;
             LevelChunkSection section = source[i];
             sections[i] = new SectionCopy(section.getStates().copy(),
                     copyBiomes(section.getBiomes(), biomes));
         }
-        return new ChunkCopy(sections, chunk.getMinSection());
+        return new ChunkCopy(sections, minimum, range.low() << 4, (range.high() + 1) << 4);
     }
 
 

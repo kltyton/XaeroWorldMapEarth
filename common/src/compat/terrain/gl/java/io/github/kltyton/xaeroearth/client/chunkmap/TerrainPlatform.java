@@ -25,6 +25,10 @@ abstract class TerrainPlatform {
     protected final SurfaceRenderer surfaceRenderer = new SurfaceRenderer();
     protected DynamicTexture coverage;
 
+    protected void drawNavigation(RenderTarget target, MapCamera camera) {
+        io.github.kltyton.xaeroearth.client.render.navigation.NavigationRenderer.drawMap(target, camera, delegate.depthTarget());
+    }
+
     public KuiMapDepthTarget depthTarget() { return delegate.depthTarget(); }
 
     protected boolean drawSurface(MapCamera camera, NativeTerrainScene.Surface surface, RenderTarget target,
@@ -34,6 +38,11 @@ abstract class TerrainPlatform {
             updateCoverage.run();
             surfaceRenderer.update(surface);
             GlStateManager._clearColor(underground ? 0 : 0.46F, underground ? 0 : 0.67F, underground ? 0 : 0.82F, 1);
+            RenderSystem.enableDepthTest();
+            RenderSystem.depthFunc(GL11.GL_LEQUAL);
+            RenderSystem.depthMask(true);
+            RenderSystem.enableCull();
+            RenderSystem.disableBlend();
             GlStateManager._clearDepth(1);
             GlStateManager._clear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT, Minecraft.ON_OSX);
             return surface != null && surfaceRenderer.draw(camera, coverage.getId(),

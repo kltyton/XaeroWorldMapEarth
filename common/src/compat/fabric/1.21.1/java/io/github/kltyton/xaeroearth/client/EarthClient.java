@@ -1,5 +1,8 @@
 package io.github.kltyton.xaeroearth.client;
 
+import io.github.kltyton.xaeroearth.client.render.navigation.NavigationRenderer;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
+
 import io.github.kltyton.xaeroearth.client.bridge.XaeroMapBridge;
 import io.github.kltyton.xaeroearth.client.ui.NativeMapSkin;
 import io.github.kltyton.xaeroearth.client.ui.NativeMapTerrain;
@@ -25,6 +28,8 @@ import xaero.map.gui.GuiMap;
 /** Adds the camera selector while the original GuiMap owns its complete lifecycle. */
 public final class EarthClient extends EarthClientState {
     public static void initialize() {
+        WorldRenderEvents.LAST.register(context -> NavigationRenderer.draw(context.positionMatrix(),
+                context.projectionMatrix(), context.camera().getPosition()));
         ClientTickEvents.END_CLIENT_TICK.register(minecraft -> onTick());
         ClientLifecycleEvents.CLIENT_STOPPING.register(minecraft -> onStopping());
         ClientChunkEvents.CHUNK_LOAD.register((world, chunk) -> {

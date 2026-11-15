@@ -5,32 +5,13 @@ plugins {
 }
 apply from: '../../gradle/target-conventions/forge.gradle'
 
-if (!project.hasProperty('kuiJar')) {
-    throw new GradleException('This target requires -PkuiJar=<matching Forge KUI JAR with the basic chunk rendering API>')
-}
-def localKuiJar = file(project.property('kuiJar'))
-new java.util.jar.JarFile(localKuiJar).withCloseable { archive ->
-    ['io/github/kltyton/kltytonui/chunkmap/KuiNativeTerrainRenderer.class',
-     'io/github/kltyton/kltytonui/chunkmap/KuiNativeTerrainRenderer$Draw.class',
-     'io/github/kltyton/kltytonui/chunkmap/KuiNativeTerrainRenderer$GpuMesh.class',
-     'io/github/kltyton/kltytonui/chunkmap/KuiChunkMeshBaker.class',
-     'io/github/kltyton/kltytonui/chunkmap/KuiNativeMesh.class'].each { name ->
-        if (archive.getEntry(name) == null) throw new GradleException("Missing Forge chunk rendering API: ${name}")
-    }
-}
-repositories { maven { url = 'https://maven.latvian.dev/releases' } }
 dependencies {
     compileOnly 'org.joml:joml:1.10.5'
-    runtimeOnly files(localKuiJar)
-    jarJar files(localKuiJar)
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
     compileOnly 'io.github.llamalad7:mixinextras-common:0.4.1'
     annotationProcessor 'io.github.llamalad7:mixinextras-common:0.4.1'
     jarJar(implementation('io.github.llamalad7:mixinextras-forge:0.4.1')) {
         version { strictly '[0.4.1,)'; prefer '0.4.1' }
-    }
-    jarJar(implementation('dev.latvian.mods:rhino-forge:1902.2.3-build.284')) {
-        version { strictly '[1902.2.3-build.284]'; prefer '1902.2.3-build.284' }
     }
 }
 mixin {

@@ -68,42 +68,56 @@ final class ChunkStoragePlatform extends StoredChunkSource<ChunkStoragePlatform.
         return level.getChunkSource().getChunk(x, z, ChunkStatus.FULL, false) != null;
     }
 
-    ChunkCopy loaded(int x, int z) {
+    ChunkCopy loaded(int x, int z, int floor, int ceiling) {
         LevelChunk live = level.getChunkSource().getChunk(x, z, ChunkStatus.FULL, false);
-        if (live != null) return copy(live);
+        if (live != null) return copy(live, floor, ceiling);
         return null;
     }
 
-    @Override protected ChunkCopy copyLoaded(StoredContext context, int x, int z) {
+    @Override protected ChunkCopy copyLoaded(StoredContext context, int x, int z, int floor, int ceiling) {
         var world = context.server.getLevel(level.dimension());
         if (world == null) return (ChunkCopy) null;
         LevelChunk current = world.getChunkSource().getChunkNow(x, z);
-        return current == null ? null : copy(current);
+        return current == null ? null : copy(current, floor, ceiling);
     }
 
-    @Override protected CompletableFuture<ChunkCopy> readStored(StoredContext context, int x, int z) {
-        return context.storage.read(new ChunkPos(x, z)).thenApplyAsync(tag -> decode(context, tag), conversion);
+    @Override protected CompletableFuture<ChunkCopy> readStored(StoredContext context, int x, int z, int floor, int ceiling) {
+        return context.storage.read(new ChunkPos(x, z)).thenApplyAsync(tag -> decode(context, tag, floor, ceiling), conversion);
     }
 
-    private ChunkCopy decode(StoredContext context, Optional<CompoundTag> tag) {
+    private ChunkCopy decode(StoredContext context, Optional<CompoundTag> tag, int floor, int ceiling) {
         if (closed.get() || tag.isEmpty()) return null;
-        CompoundTag upgraded = context.storage.upgradeChunkTag(tag.get(), -1, context.datafix.copy(),
+        CompoundTag upgraded = context.storage.upgradeChunkTag(tag.get().copy(), -1, context.datafix.copy(),
                 SharedConstants.getCurrentVersion().dataVersion().version());
+        int minimum = context.height.getMinSectionY();
+        int count = context.height.getSectionsCount();
+        var range = storedSectionRange(minimum, count, floor, ceiling,
+                upgraded.getCompoundOrEmpty("Heightmaps").getLongArray("WORLD_SURFACE").orElseGet(() -> new long[0]));
+        if (range.low() > range.high()) return null;
+        var sectionsTag = upgraded.getListOrEmpty("sections");
+        for (int i = sectionsTag.size() - 1; i >= 0; i--) {
+            var sectionTag = sectionsTag.getCompoundOrEmpty(i);
+            int y = sectionTag.getByteOr("Y", (byte) 0);
+            if (!range.contains(y)) sectionsTag.remove(i);
+        }
         var parsed = SerializableChunkData.parse(context.height, context.factory, upgraded);
         if (parsed == null || !parsed.chunkStatus().isOrAfter(ChunkStatus.FULL)) return null;
         SectionCopy[] sections = new SectionCopy[context.height.getSectionsCount()];
         for (var section : parsed.sectionData()) {
             int index = section.y() - context.height.getMinSectionY();
-            if (index >= 0 && index < sections.length) sections[index] = new SectionCopy(section.chunkSection());
+            if (index >= 0 && index < sections.length && section.chunkSection() != null) sections[index] = new SectionCopy(section.chunkSection());
         }
-        return new ChunkCopy(sections, context.height.getMinSectionY());
+        return new ChunkCopy(sections, minimum, range.low() << 4, (range.high() + 1) << 4);
     }
 
-    private static ChunkCopy copy(LevelChunk chunk) {
+    private static ChunkCopy copy(LevelChunk chunk, int floor, int ceiling) {
         LevelChunkSection[] source = chunk.getSections();
         SectionCopy[] sections = new SectionCopy[source.length];
-        for (int i = 0; i < source.length; i++) sections[i] = new SectionCopy(source[i].copy());
-        return new ChunkCopy(sections, chunk.getMinSectionY());
+        int minimum = chunk.getMinSectionY();
+        var range = liveSectionRange(chunk, minimum, source.length, floor, ceiling);
+        for (int y = range.low(); y <= range.high(); y++)
+            sections[y - minimum] = new SectionCopy(source[y - minimum].copy());
+        return new ChunkCopy(sections, minimum, range.low() << 4, (range.high() + 1) << 4);
     }
 
 

@@ -102,7 +102,7 @@ public final class NativeMapEntityIndicators {
                 EntityIndicatorPlatform.drawModels(NativeMapTerrain.camera(), current.models.values(), target);
             }
         } finally {
-            NativeMapTerrain.finishTerrain();
+            NativeMapTerrain.finishTerrain(map);
         }
         if (current != null && current.map == map && !current.models.isEmpty()) {
             MapEntityLayer.drawIndicators(NativeMapTerrain.camera(), current.models.values(), target);

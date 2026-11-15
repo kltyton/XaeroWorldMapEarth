@@ -5,7 +5,7 @@ import io.github.kltyton.xaeroearth.client.chunkmap.NativeTerrainScene.Surface;
 import io.github.kltyton.xaeroearth.client.chunkmap.ChunkTiles;
 import io.github.kltyton.xaeroearth.client.chunkmap.NativeTileSession;
 import io.github.kltyton.xaeroearth.client.chunkmap.MapCamera;
-import io.github.kltyton.xaeroearth.client.mixin.GuiMapAccess;
+import io.github.kltyton.xaeroearth.client.chunkmap.TerrainDetail;
 import java.nio.ByteBuffer;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -33,6 +33,8 @@ public final class XaeroMapBridge implements AutoCloseable {
     private static final int TEXTURE_COPY_BATCH = 8;
     private static final int SURFACE_TEXELS = MapTextureReadback.SURFACE_TEXELS;
     private record Bounds(long minX, long minZ, long maxX, long maxZ) {
+        long width() { return maxX - minX; }
+        long depth() { return maxZ - minZ; }
         boolean contains(Bounds other) {
             return minX <= other.minX && minZ <= other.minZ && maxX >= other.maxX && maxZ >= other.maxZ;
         }
@@ -41,8 +43,8 @@ public final class XaeroMapBridge implements AutoCloseable {
                     && key.x() + 64L * key.step() > minX && key.z() + 64L * key.step() > minZ;
         }
         Bounds padded() {
-            return new Bounds(Math.floorDiv(minX, 16) * 16 - 16, Math.floorDiv(minZ, 16) * 16 - 16,
-                    Math.floorDiv(maxX + 15, 16) * 16 + 16, Math.floorDiv(maxZ + 15, 16) * 16 + 16);
+            return new Bounds(Math.floorDiv(minX, 32) * 32 - 32, Math.floorDiv(minZ, 32) * 32 - 32,
+                    Math.floorDiv(maxX + 31, 32) * 32 + 32, Math.floorDiv(maxZ + 31, 32) * 32 + 32);
         }
     }
     private record Scene(MapProcessor processor, String world, String dimension, String multiworld, int cave) { }
@@ -69,6 +71,7 @@ public final class XaeroMapBridge implements AutoCloseable {
     private Scene scene;
     private long generation, lastCopy, lastPublish;
     private int scanCursor;
+    private double lodX, lodZ, lodScale;
     private boolean closed, dirty;
     private volatile Surface surface;
     private CompletableFuture<Surface> publishing;
@@ -82,9 +85,12 @@ public final class XaeroMapBridge implements AutoCloseable {
 
     /** Selects the scene before the caller constructs its current camera. */
     public boolean prepareFrame(GuiMap map) {
+        return prepareFrame(map.getMapProcessor(), io.github.kltyton.xaeroearth.client.EarthClient.modelsFor(map));
+    }
+
+    public boolean prepareFrame(MapProcessor processor, NativeTileSession currentModels) {
         if (!Minecraft.getInstance().isSameThread()) throw new IllegalStateException("Read mapped terrain on the client thread");
         if (closed) return false;
-        MapProcessor processor = map.getMapProcessor();
         synchronized (processor.renderThreadPauseSync) {
             if (processor.isRenderingPaused() || processor.isWaitingForWorldUpdate()
                     || !processor.isMapWorldUsable() || processor.isCurrentMapLocked()) return false;
@@ -99,26 +105,38 @@ public final class XaeroMapBridge implements AutoCloseable {
                 viewport = visibleViewport = null;
                 terrainMinY = Integer.MAX_VALUE; terrainMaxY = Integer.MIN_VALUE;
             }
-            updateModels(map);
+            updateModels(currentModels);
         }
         return true;
     }
 
     /** Reads the native caches within the same camera frustum used by the GPU passes. */
     public boolean capture(GuiMap map, MapCamera camera) {
+        return capture(map.getMapProcessor(), io.github.kltyton.xaeroearth.client.EarthClient.modelsFor(map), camera);
+    }
+
+    public boolean capture(MapProcessor expected, NativeTileSession currentModels, MapCamera camera) {
         if (!Minecraft.getInstance().isSameThread()) throw new IllegalStateException("Read mapped terrain on the client thread");
-        if (closed || scene == null || scene.processor != map.getMapProcessor()) return false;
+        if (closed || scene == null || scene.processor != expected) return false;
         MapProcessor processor = scene.processor;
         synchronized (processor.renderThreadPauseSync) {
             if (processor.isRenderingPaused() || !matches(scene, processor)) return false;
             Scene selected = scene;
             visibleViewport = bounds(camera);
             Bounds nextViewport = visibleViewport == null ? null : visibleViewport.padded();
-            if (!Objects.equals(viewport, nextViewport)) { viewport = nextViewport; dirty = true; }
+            if (nextViewport != null && (viewport == null || !viewport.contains(visibleViewport)
+                    || nextViewport.width() * 2 < viewport.width() || nextViewport.depth() * 2 < viewport.depth())) {
+                viewport = nextViewport;
+                dirty = true;
+            }
+            double scaleBand = TerrainDetail.captureScale(camera.pixelsPerBlock());
+            if (Math.hypot(camera.x() - lodX, camera.z() - lodZ) >= 32 || lodScale != scaleBand) {
+                lodX = camera.x(); lodZ = camera.z(); lodScale = scaleBand; dirty = true;
+            }
+            double captureX = lodX, captureZ = lodZ, captureScale = lodScale;
             long now = System.nanoTime();
             if (viewport != null && now - lastCopy >= 100_000_000L) {
                 List<Key> visible = new ArrayList<>();
-                var access = (GuiMapAccess) map;
                 // GuiMap's draw buffers are transient. Query the existing cache hierarchy for the current viewport.
                 for (int level = 3; level >= 0; level--) {
                     int span = 512 << level;
@@ -131,10 +149,13 @@ public final class XaeroMapBridge implements AutoCloseable {
                         if (region != null) addKeys(region, visible, viewport);
                     }
                 }
+                var candidates = Set.copyOf(visible);
+                double focusRadius = TerrainDetail.radius(captureScale, Double.POSITIVE_INFINITY);
+                visible.removeIf(key -> !wantedLod(key, captureX, captureZ, captureScale, focusRadius, candidates));
                 required = Set.copyOf(visible);
                 // Coarse coverage fills first, followed by its finer cached textures.
                 visible.sort(Comparator.comparingInt(Key::level).reversed().thenComparingDouble(key ->
-                        Math.hypot(key.x() - access.earth$cameraX(), key.z() - access.earth$cameraZ())));
+                        Math.hypot(key.x() - camera.x(), key.z() - camera.z())));
                 if (!visible.isEmpty()) {
                     java.util.Collections.rotate(visible, -(scanCursor % visible.size()));
                     scanCursor = (scanCursor + TEXTURE_COPY_BATCH) % visible.size();
@@ -147,20 +168,49 @@ public final class XaeroMapBridge implements AutoCloseable {
                 copyVisible(selected, ticket, visible, versions, inFlight, processor);
             }
             finishPublish();
-            updateModels(map);
+            updateModels(currentModels);
             if (publishing == null && dirty && viewport != null && !tiles.isEmpty() && now - lastPublish >= 100_000_000L) {
                 dirty = false; lastPublish = now; publishGeneration = generation;
                 Bounds frameViewport = viewport;
                 publishingViewport = frameViewport;
                 List<Tile> snapshot = new ArrayList<>();
-                for (Tile tile : tiles.values()) if (frameViewport.intersects(tile.key)) snapshot.add(tile);
+                for (Tile tile : tiles.values())
+                    if (frameViewport.intersects(tile.key))
+                        snapshot.add(tile);
                 // This immutable copy is the only map data consumed by the background compositor.
                 long revision = ++surfaceRevision;
                 float frameBrightness = brightness;
-                publishing = CompletableFuture.supplyAsync(() -> composite(snapshot, frameViewport, frameBrightness, revision), conversion);
+                int floor = (int) MapHeightBounds.resolve(processor, models, terrainMinY, terrainMaxY).min();
+                publishing = CompletableFuture.supplyAsync(() -> composite(
+                        snapshot, frameViewport, frameBrightness, revision, captureX, captureZ, captureScale, floor), conversion);
             }
         }
         return true;
+    }
+
+    private boolean wantedLod(Key key, double x, double z, double scale, double focusRadius, Set<Key> available) {
+        int preferred = preferredLod(key, x, z, scale, focusRadius);
+        if (key.level >= preferred) return true;
+        for (int level = preferred; level <= 3; level++) {
+            Key parent = key.parent(level);
+            if (!available.contains(parent)) continue;
+            Tile tile = tiles.get(parent);
+            if (tile == null) continue;
+            int step = parent.step();
+            int x0 = (int) ((key.x() - parent.x()) / step);
+            int z0 = (int) ((key.z() - parent.z()) / step);
+            int width = (64 * key.step() + step - 1) / step;
+            int x1 = Math.min(64, x0 + width), z1 = Math.min(64, z0 + width);
+            int[] sums = tile.unmapped;
+            if (sums[z1 * 65 + x1] - sums[z1 * 65 + x0]
+                    - sums[z0 * 65 + x1] + sums[z0 * 65 + x0] == 0) return false;
+        }
+        return true;
+    }
+
+    private static int preferredLod(Key key, double x, double z, double scale, double focusRadius) {
+        double distance = Math.hypot(key.x() + 32 * key.step() - x, key.z() + 32 * key.step() - z);
+        return TerrainDetail.mappedLevel(scale, distance, focusRadius);
     }
 
     private Bounds bounds(MapCamera camera) {
@@ -169,7 +219,7 @@ public final class XaeroMapBridge implements AutoCloseable {
         if (terrainMinY != Integer.MAX_VALUE) minY = Math.min(minY, terrainMinY);
         if (terrainMaxY != Integer.MIN_VALUE) maxY = Math.max(maxY, terrainMaxY);
         minY -= camera.y(); maxY -= camera.y();
-        var inverse = camera.projectionMatrix().mul(camera.viewMatrix()).invert();
+        var inverse = camera.viewportProjectionMatrix().mul(camera.viewMatrix()).invert();
         Vector4f[] corners = new Vector4f[8];
         for (int i = 0; i < corners.length; i++) {
             corners[i] = inverse.transform(new Vector4f((i & 1) == 0 ? -1 : 1,
@@ -201,8 +251,7 @@ public final class XaeroMapBridge implements AutoCloseable {
                 (long) Math.ceil(camera.x() + maxX) + 1, (long) Math.ceil(camera.z() + maxZ) + 1);
     }
 
-    private void updateModels(GuiMap map) {
-        var current = io.github.kltyton.xaeroearth.client.EarthClient.modelsFor(map);
+    private void updateModels(NativeTileSession current) {
         if (models != current) {
             models = current; visibleModels = Map.of(); modelRevision = -1; mappedRevision = -1;
         }
@@ -341,15 +390,19 @@ public final class XaeroMapBridge implements AutoCloseable {
                 && selected.cave == processor.getCurrentCaveLayer();
     }
 
-    private static Surface composite(List<Tile> tiles, Bounds viewport, float brightness, long revision) {
+    private static Surface composite(List<Tile> tiles, Bounds viewport, float brightness, long revision,
+                                     double focusX, double focusZ, double scale, int dimensionFloor) {
         long minX = viewport.minX, minZ = viewport.minZ, maxX = viewport.maxX, maxZ = viewport.maxZ;
-        int step = 1;
+        int step = 1 << TerrainDetail.mappedLevel(scale, 0, 32);
         while (((maxX - minX + step - 1) / step) * ((maxZ - minZ + step - 1) / step) > SURFACE_TEXELS) step <<= 1;
         minX = Math.floorDiv(minX, step) * step; minZ = Math.floorDiv(minZ, step) * step;
         int width = (int) ((maxX - minX + step - 1) / step), depth = (int) ((maxZ - minZ + step - 1) / step);
         byte[] rgba = new byte[width * depth * 4]; int[] heights = new int[width * depth];
+        byte[] sourceSteps = new byte[width * depth];
         tiles.sort(Comparator.comparingInt((Tile tile) -> tile.key.level).reversed());
+        double focusRadius = TerrainDetail.radius(scale, Double.POSITIVE_INFINITY);
         for (Tile tile : tiles) {
+            boolean preferred = tile.key.level >= preferredLod(tile.key, focusX, focusZ, scale, focusRadius);
             int firstX = Math.max(0, (int) ((tile.key.x() - minX) / step));
             int firstZ = Math.max(0, (int) ((tile.key.z() - minZ) / step));
             int endX = Math.min(width, (int) ((tile.key.x() + 64L * tile.key.step() - minX + step - 1) / step));
@@ -360,14 +413,65 @@ public final class XaeroMapBridge implements AutoCloseable {
                 if (tx < 0 || tz < 0 || tx >= 64 || tz >= 64) continue;
                 int source = tz * 64 + tx, destination = z * width + x;
                 if (tile.rgba[source * 4 + 3] == 0) continue;
+                if (!preferred && rgba[destination * 4 + 3] != 0) continue;
                 System.arraycopy(tile.rgba, source * 4, rgba, destination * 4, 4);
                 float illumination = Math.max(brightness, Byte.toUnsignedInt(tile.light[source]) / 255.0F);
                 for (int channel = 0; channel < 3; channel++)
                     rgba[destination * 4 + channel] = (byte) Math.round(Byte.toUnsignedInt(tile.rgba[source * 4 + channel]) * illumination);
                 heights[destination] = tile.heights[source];
+                sourceSteps[destination] = (byte) Math.max(step, tile.key.step());
             }
         }
-        return new Surface(minX, minZ, width, depth, step, rgba, heights, revision);
+        heights = filterDistantHeights(heights, sourceSteps, width, depth, step);
+        var outline = new it.unimi.dsi.fastutil.ints.IntArrayList();
+        var joins = new it.unimi.dsi.fastutil.ints.IntArrayList();
+        for (int z = 0; z < depth; z++) for (int x = 0; x < width; x++) {
+            int cell = z * width + x;
+            if (rgba[cell * 4 + 3] == 0) continue;
+            int edge = cell * 4;
+            // The padded viewport is a crop, not an unexplored map boundary.
+            if (x > 0 && rgba[(cell - 1) * 4 + 3] == 0) outline.add(edge);
+            if (z + 1 < depth && rgba[(cell + width) * 4 + 3] == 0) outline.add(edge + 1);
+            if (x + 1 < width && rgba[(cell + 1) * 4 + 3] == 0) outline.add(edge + 2);
+            if (z > 0 && rgba[(cell - width) * 4 + 3] == 0) outline.add(edge + 3);
+            if (step <= 8) {
+                // Store mapped edges that can become a near/far boundary as detailed meshes arrive.
+                if (x + 1 < width && sourceSteps[cell + 1] != 0 && (minX + (x + 1L) * step) % 16 == 0)
+                    joins.add(edge + 2);
+                if (z + 1 < depth && sourceSteps[cell + width] != 0 && (minZ + (z + 1L) * step) % 16 == 0)
+                    joins.add(edge + 1);
+            }
+        }
+        var patches = io.github.kltyton.xaeroearth.client.chunkmap.SurfacePatches.build(width, depth, step, heights, sourceSteps);
+        return new Surface(minX, minZ, width, depth, step, rgba, heights, patches, outline.toIntArray(), joins.toIntArray(),
+                dimensionFloor, revision);
+    }
+
+    private static int[] filterDistantHeights(int[] heights, byte[] sourceSteps, int width, int depth, int step) {
+        int[] result = heights.clone();
+        int[] neighbours = new int[9];
+        for (int z = 0; z < depth; z++) for (int x = 0; x < width; x++) {
+            int index = z * width + x;
+            int suppliedStep = Byte.toUnsignedInt(sourceSteps[index]);
+            if (suppliedStep <= 1) continue;
+            int stride = Math.max(1, suppliedStep / step);
+            int n = 0;
+            for (int dz = -stride; dz <= stride; dz += stride) {
+                for (int dx = -stride; dx <= stride; dx += stride) {
+                    int sx = x + dx, sz = z + dz;
+                    if (sx < 0 || sx >= width || sz < 0 || sz >= depth) continue;
+                    int sample = sz * width + sx;
+                    if (sourceSteps[sample] != 0) neighbours[n++] = heights[sample];
+                }
+            }
+            if (n < 5) continue;
+            java.util.Arrays.sort(neighbours, 0, n);
+            int median = neighbours[n / 2];
+            int deviation = heights[index] - median;
+            if (Math.abs(deviation) > 2)
+                result[index] = median + Math.round(deviation * 0.35F);
+        }
+        return result;
     }
 
     private void finishPublish() {
@@ -383,6 +487,12 @@ public final class XaeroMapBridge implements AutoCloseable {
     }
 
     public Surface surface() { return surface; }
+    public double minPickHeight() {
+        return Math.min(terrainMinY, MapHeightBounds.resolve(scene.processor, models, terrainMinY, terrainMaxY).min()) - 1;
+    }
+    public double maxPickHeight() {
+        return Math.max(terrainMaxY, MapHeightBounds.resolve(scene.processor, models, terrainMinY, terrainMaxY).max()) + 1;
+    }
     public NativeTileSession models() { return models; }
     public Map<ChunkTiles.Tile, Integer> visibleModels() { return visibleModels; }
     public long sceneKey() { return generation; }
@@ -426,7 +536,7 @@ public final class XaeroMapBridge implements AutoCloseable {
             int x0 = (int) ((x - key.x()) / step), z0 = (int) ((z - key.z()) / step);
             int x1 = x0 + 16 / step, z1 = z0 + 16 / step;
             int[] sums = tile.unmapped;
-            return sums[z1 * 65 + x1] - sums[z1 * 65 + x0] - sums[z0 * 65 + x1] + sums[z0 * 65 + x0] == 0;
+            if (sums[z1 * 65 + x1] - sums[z1 * 65 + x0] - sums[z0 * 65 + x1] + sums[z0 * 65 + x0] == 0) return true;
         }
         return false;
     }

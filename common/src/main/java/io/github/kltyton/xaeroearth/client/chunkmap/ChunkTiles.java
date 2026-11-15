@@ -84,9 +84,28 @@ public final class ChunkTiles implements AutoCloseable {
                     var column = snapshot.column(sx, sz);
                     heights[z * 32 + x] = column.isEmpty() ? snapshot.minY() : column.get(column.size() - 1).toY() - 1;
                 }
-                return new NativeTile(tile, KuiNativeMesh.encode(mesh), heights);
+                return new NativeTile(tile, encodeMapLighting(mesh), heights);
             }
         }, workers);
+    }
+
+    private static byte[] encodeMapLighting(KuiChunkMeshBaker.Mesh mesh) {
+        byte[] model = KuiNativeMesh.encode(mesh);
+        // KUI mesh v1 packs block and sky light in the low nibbles of UV2.
+        // An ambient term keeps visible cave textures readable in the map.
+        int start = model.length - mesh.vertexCount() * KuiNativeMesh.STRIDE;
+        int blockLight = java.nio.ByteOrder.nativeOrder() == java.nio.ByteOrder.LITTLE_ENDIAN ? 24 : 25;
+        for (int vertex = start; vertex < model.length; vertex += KuiNativeMesh.STRIDE) {
+            applyAmbientLight(model, vertex + blockLight);
+            applyAmbientLight(model, vertex + blockLight + Short.BYTES);
+        }
+        return model;
+    }
+
+    private static void applyAmbientLight(byte[] model, int index) {
+        int light = model[index] & 15;
+        int ambient = 3 + (light * 12 + 7) / 15;
+        model[index] = (byte) ((model[index] & 0xf0) | ambient);
     }
 
     private Rendered render(ChunkMapSnapshot snapshot, BooleanSupplier cancelled, boolean surfaceOnly) {

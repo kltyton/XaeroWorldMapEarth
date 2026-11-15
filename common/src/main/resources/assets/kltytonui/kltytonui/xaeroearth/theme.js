@@ -68,15 +68,18 @@ function xaeroMapControl(control, settings) {
             class: 'mc-slider__value', 'aria-hidden': 'true'
         }, caption.value) : null]);
     }
-    return Vue.h(McUIVue.McButton, {
+    return Vue.h('div', {
         key: control.key,
-        variant: control.selected || control.primary ? 'primary' : 'normal',
-        size: 'middle', tabindex: -1, disabled: !control.active,
         class: ['xaeroearth-proxy', 'is-' + control.role,
             settings && control.role === 'button' ? 'is-setting' : '',
             control.selected ? 'is-selected' : ''],
         'data-native-key': control.key, style: xaeroMapStyleText(style)
-    }, { default: function () { return xaeroMapSkinLabel(control); } });
+    }, [Vue.h(McUIVue.McButton, {
+        variant: control.selected || control.primary ? 'primary' : 'normal',
+        size: 'middle', tabindex: -1, disabled: !control.active,
+        style: 'width:100%;height:' + control.height + 'px;min-height:' + control.height
+            + 'px;max-height:' + control.height + 'px;font-size:' + (control.height * 9 / 20) + 'px;'
+    }, { default: function () { return xaeroMapSkinLabel(control); } })]);
 }
 
 function xaeroMapBounds(controls, padding) {
@@ -114,7 +117,10 @@ function xaeroMapMenu(rows) {
                 key: row.key, value: row.key, label: '', disabled: !row.active,
                 interactive: row.active
             }, { left: function () {
-                return Vue.h('span', { class: 'xaeroearth-menu-label', 'data-native-key': row.key }, xaeroMapSkinLabel(row));
+                return Vue.h('span', {
+                    class: 'xaeroearth-menu-label', 'data-native-key': row.key,
+                    style: 'font-size:' + (row.height * 8 / 11) + 'px;line-height:' + row.height + 'px;'
+                }, xaeroMapSkinLabel(row));
             } });
         });
     } });

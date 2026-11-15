@@ -2,9 +2,14 @@ package io.github.kltyton.xaeroearth.client;
 
 import io.github.kltyton.xaeroearth.client.bridge.XaeroMapBridge;
 import io.github.kltyton.xaeroearth.client.ui.NativeMapSkin;
+import io.github.kltyton.xaeroearth.client.ui.NativeMapInput;
 import io.github.kltyton.xaeroearth.client.ui.NativeMapTerrain;
+import io.github.kltyton.xaeroearth.client.ui.NativeMinimapTerrain;
 import io.github.kltyton.xaeroearth.client.chunkmap.ActiveMapResources;
 import io.github.kltyton.xaeroearth.client.chunkmap.NativeTileSession;
+import io.github.kltyton.xaeroearth.client.chunkmap.TerrainDetail;
+import io.github.kltyton.xaeroearth.client.navigation.PlayerNavigation;
+import io.github.kltyton.xaeroearth.client.render.navigation.NavigationRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
@@ -32,10 +37,7 @@ abstract class EarthClientState {
         for (var view : EarthPreferences.View.values()) {
             String key = "xaeroearth.view." + view.name().toLowerCase(java.util.Locale.ROOT);
             Button selector = factory.create(ClientScreen.viewLabel(key), map.width / 2 - 96 + view.ordinal() * 64,
-                    Math.max(4, map.height - 44), () -> {
-                        EarthPreferences.VIEW.set(view);
-                        EarthPreferences.save();
-                    });
+                    Math.max(4, map.height - 44), () -> NativeMapInput.selectView(map, view));
             selector.visible = EarthPreferences.ENABLED.get();
             add.accept(map, selector);
         }
@@ -43,7 +45,9 @@ abstract class EarthClientState {
     }
 
     protected static void reloadResources(net.minecraft.server.packs.resources.ResourceManager manager) {
+        NavigationRenderer.close();
         NativeMapSkin.close(); NativeMapTerrain.hide();
+        NativeMinimapTerrain.close();
         closeModels();
         if (resources != null) { resources.close(); resources = null; }
         if (EarthPreferences.ENABLED.get()) {
@@ -54,14 +58,17 @@ abstract class EarthClientState {
 
     protected static void tick(boolean releaseOnWorldChange) {
         Minecraft minecraft = Minecraft.getInstance();
+        PlayerNavigation.tick(ClientScreen.screen(minecraft) != null);
         if (level != minecraft.level) {
             level = minecraft.level;
             if (releaseOnWorldChange) NativeMapSkin.close(); else NativeMapSkin.suspend();
             themedScreens.clear();
             NativeMapTerrain.hide();
+            NativeMinimapTerrain.close();
             closeModels();
             if (bridge != null) { bridge.close(); bridge = null; }
         }
+        if (!EarthPreferences.ENABLED.get() || !EarthPreferences.MINIMAP_3D.get()) NativeMinimapTerrain.close();
         if (minecraft.level != null && EarthPreferences.ENABLED.get() && bridge == null) bridge = new XaeroMapBridge();
         if (minecraft.level == null || !EarthPreferences.ENABLED.get()) {
             NativeMapTerrain.hide();
@@ -96,19 +103,20 @@ abstract class EarthClientState {
             if (models != null && minecraft.player != null && currentModelContext) {
                 if (ClientScreen.screen(minecraft) instanceof GuiMap activeMap) io.github.kltyton.xaeroearth.client.ui.NativeMapInput.tick(activeMap);
                 double x = minecraft.player.getX(), z = minecraft.player.getZ();
-                double radius = Math.hypot(minecraft.getWindow().getWidth(), minecraft.getWindow().getHeight()) / 8;
-                int layer = processor == null ? Integer.MAX_VALUE : processor.getCurrentCaveLayer();
-                int ceiling = layer == Integer.MAX_VALUE ? Integer.MAX_VALUE
-                        : processor.getMapWorld().getCurrentDimension().getLayeredMapRegions().getLayer(layer).getCaveStart();
-                if (ceiling != Integer.MAX_VALUE && ceiling != Integer.MIN_VALUE) ceiling++;
-                if (ClientScreen.screen(minecraft) instanceof GuiMap map && modelsFor(map) != null) {
+                double radius = 0, pixelsPerBlock = 1;
+                int ceiling = modelCeiling(processor);
+                if (ClientScreen.screen(minecraft) instanceof GuiMap map && map.getMapProcessor() == processor) {
                     var access = (io.github.kltyton.xaeroearth.client.mixin.GuiMapAccess) map;
                     x = access.earth$cameraX(); z = access.earth$cameraZ();
+                    pixelsPerBlock = access.earth$scale() / minecraft.getWindow().getGuiScale();
                     radius = Math.hypot(minecraft.getWindow().getWidth(), minecraft.getWindow().getHeight()) / (2 * access.earth$scale());
-                    if (EarthPreferences.VIEW.get() == EarthPreferences.View.ISOMETRIC)
+                    if (NativeMapInput.view() != EarthPreferences.View.STREET)
                         radius /= Math.max(0.05, Math.cos(io.github.kltyton.xaeroearth.client.ui.NativeMapInput.angle()));
+                } else if (EarthPreferences.MINIMAP_3D.get()) {
+                    radius = NativeMinimapTerrain.detailRadius();
                 }
-                models.tick(x, z, Math.min(1536, radius), ceiling, ClientScreen.screen(minecraft) instanceof GuiMap);
+                models.tick(x, z, TerrainDetail.radius(pixelsPerBlock, radius), ceiling,
+                        ClientScreen.screen(minecraft) instanceof GuiMap || EarthPreferences.MINIMAP_3D.get());
             }
         }
         if (!themedScreen(ClientScreen.screen(minecraft))) NativeMapSkin.suspend();
@@ -127,12 +135,23 @@ abstract class EarthClientState {
     public static boolean themed(GuiMap map) { return EarthPreferences.ENABLED.get() && ClientScreen.screen(Minecraft.getInstance()) == map; }
 
     public static NativeTileSession modelsFor(GuiMap map) {
-        var processor = map.getMapProcessor();
-        return models != null && processor.getWorld() == Minecraft.getInstance().level
+        return modelsFor(map.getMapProcessor());
+    }
+
+    public static NativeTileSession modelsFor(xaero.map.MapProcessor processor) {
+        return models != null && processor.isMapWorldUsable() && processor.getWorld() == Minecraft.getInstance().level
                 && !processor.isConsideringNetherFairPlay() && processor.isCurrentMultiworldWritable()
+                && models.usesCeiling(modelCeiling(processor))
                 && java.util.Objects.equals(modelWorld, processor.getCurrentWorldId())
                 && java.util.Objects.equals(modelDimension, processor.getCurrentDimId())
                 && java.util.Objects.equals(modelMultiworld, processor.getCurrentMWId()) ? models : null;
+    }
+
+    private static int modelCeiling(xaero.map.MapProcessor processor) {
+        int layer = processor.getCurrentCaveLayer();
+        if (layer == Integer.MAX_VALUE) return Integer.MAX_VALUE;
+        int ceiling = processor.getMapWorld().getCurrentDimension().getLayeredMapRegions().getLayer(layer).getCaveStart();
+        return ceiling == Integer.MIN_VALUE || ceiling == Integer.MAX_VALUE ? ceiling : ceiling + 1;
     }
 
     public static void changedChunk(net.minecraft.world.level.LevelAccessor changed, int x, int z) {
@@ -171,11 +190,19 @@ abstract class EarthClientState {
     }
 
     public static void closeMap(GuiMap map) {
-        if (map == themedMap) { themedMap = null; NativeMapSkin.suspend(); NativeMapTerrain.suspend(); }
+        if (map == themedMap) {
+            themedMap = null;
+            NativeMapInput.close(map);
+            NativeMapSkin.suspend();
+            NativeMapTerrain.suspend();
+        }
     }
 
     protected static void stop() {
+        PlayerNavigation.cancel();
+        NavigationRenderer.close();
         NativeMapSkin.close(); NativeMapTerrain.hide();
+        NativeMinimapTerrain.close();
         closeModels();
         if (bridge != null) { bridge.close(); bridge = null; }
         if (resources != null) { resources.close(); resources = null; }

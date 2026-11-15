@@ -1,0 +1,59 @@
+def loader = projectDir.name.substring(0, projectDir.name.indexOf('-'))
+def kuiMinecraft = minecraft_version == '26.1.2' ? '26.1' : xaero_mc_version
+def moduleName = "KltytonUI-${loader}-${kuiMinecraft}"
+def kui = "io.github.kltyton.kltytonui:${moduleName}:${kui_version}"
+def localPath = findProperty('kuiJar')
+def localJar = localPath == null ? null : file(localPath)
+
+if (localJar) {
+    new java.util.jar.JarFile(localJar).withCloseable { archive ->
+        def version
+        if (loader == 'fabric') {
+            def metadata = archive.getEntry('fabric.mod.json')
+            def mod = metadata == null ? null : archive.getInputStream(metadata).withCloseable {
+                new groovy.json.JsonSlurper().parse(it)
+            }
+            version = mod?.id == 'kltytonui' ? mod.version : null
+        } else {
+            def metadata = loader == 'forge' ? 'META-INF/mods.toml' : 'META-INF/neoforge.mods.toml'
+            if (archive.getEntry(metadata) != null) {
+                version = archive.manifest?.mainAttributes?.getValue('Implementation-Version')
+            }
+        }
+        if (version?.toString() != kui_version.toString()
+                || archive.getEntry('io/github/kltyton/kltytonui/chunkmap/KuiNativeTerrainRenderer.class') == null) {
+            throw new GradleException("Expected KltytonUI ${kui_version} for ${loader}: ${localJar}")
+        }
+    }
+}
+
+repositories {
+    exclusiveContent {
+        forRepository {
+            maven { url = 'https://maven.sighs.cc/repository/maven-public/' }
+        }
+        filter { includeModule('io.github.kltyton.kltytonui', moduleName) }
+    }
+}
+
+if (loader == 'fabric') {
+    def minecraftClasspath = minecraft_version.startsWith('26.') ? 'implementation' : 'modImplementation'
+    dependencies.add(minecraftClasspath, localJar ? files(localJar) : kui)
+    if (localJar) {
+        repositories { flatDir { dirs localJar.parentFile } }
+        dependencies.add('include', [group: 'local.kltytonui', name: localJar.name - '.jar', version: kui_version.toString()])
+    } else {
+        dependencies.add('include', kui)
+    }
+} else {
+    dependencies.add(loader == 'forge' ? 'modImplementation' : 'implementation', localJar ? files(localJar) : kui)
+    if (localJar) {
+        dependencies.add('jarJar', files(localJar))
+    } else {
+        dependencies {
+            jarJar(kui) {
+                version { strictly "[${kui_version}]"; prefer kui_version.toString() }
+            }
+        }
+    }
+}

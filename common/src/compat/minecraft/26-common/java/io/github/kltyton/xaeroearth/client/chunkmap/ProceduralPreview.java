@@ -220,6 +220,7 @@ public final class ProceduralPreview implements AutoCloseable {
         int count = snapshot.width() * snapshot.depth();
         int[] heights = new int[count];
         byte[] rgba = new byte[count * 4];
+        byte[] sourceSteps = new byte[count];
         for (int z = 0; z < snapshot.depth(); z++) {
             check(cancelled);
             for (int x = 0; x < snapshot.width(); x++) {
@@ -227,6 +228,7 @@ public final class ProceduralPreview implements AutoCloseable {
                 var column = snapshot.column(x, z);
                 heights[index] = (column.isEmpty() ? snapshot.minY() : column.getLast().toY()) * snapshot.verticalStep() - 1;
                 if (column.isEmpty()) continue;
+                sourceSteps[index] = (byte) Math.min(snapshot.step(), 127);
                 var state = column.getLast().state();
                 MapColor mapColor = state.getMapColor(EmptyBlockGetter.INSTANCE, BlockPos.ZERO);
                 int color = mapColor.col;
@@ -238,7 +240,9 @@ public final class ProceduralPreview implements AutoCloseable {
             }
         }
         return new NativeTerrainScene.Surface(snapshot.originX() * (long) snapshot.step(),
-                snapshot.originZ() * (long) snapshot.step(), snapshot.width(), snapshot.depth(), snapshot.step(), rgba, heights, revision);
+                snapshot.originZ() * (long) snapshot.step(), snapshot.width(), snapshot.depth(), snapshot.step(),
+                rgba, heights, SurfacePatches.build(snapshot.width(), snapshot.depth(), snapshot.step(), heights, sourceSteps),
+                new int[0], new int[0], snapshot.minY() * snapshot.verticalStep(), revision);
     }
 
     private String resourceFingerprint(Map<String, Resource> resources) {

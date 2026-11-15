@@ -1,4 +1,5 @@
 apply from: '../../gradle/target-conventions/base.gradle'
+apply from: '../../gradle/target-conventions/kui.gradle'
 apply from: '../../gradle/target-conventions/publish.gradle'
 
 loom {
@@ -18,10 +19,8 @@ dependencies {
     if (minecraft_version.startsWith('26.')) {
         implementation "net.fabricmc:fabric-loader:${loader_version}"
         implementation "xaero.map:xaeroworldmap-fabric-${xaero_mc_version}:${xaero_version}"
-        if (project.hasProperty('kuiJar')) compileOnly files(file(project.property('kuiJar')))
     } else {
         modImplementation "net.fabricmc:fabric-loader:${loader_version}"
         modImplementation "xaero.map:xaeroworldmap-fabric-${xaero_mc_version}:${xaero_version}"
-        if (project.hasProperty('kuiJar')) modCompileOnly files(file(project.property('kuiJar')))
     }
 }
