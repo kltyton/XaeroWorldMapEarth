@@ -40,10 +40,10 @@ public final class NativeMapSkin extends NativeMapSkinState {
     static final boolean MANUAL_RENDERING = false;
 
     private static final NativeMapSkinPaint.IconRenderer<GuiGraphicsExtractor> ICONS = new NativeMapSkinPaint.IconRenderer<>() {
-        @Override public void draw(GuiGraphicsExtractor graphics, GuiTexturedButton button, int mouseX, int mouseY) {
-            button.extractContents(graphics, mouseX, mouseY, 0.0F);
+        @Override public void draw(GuiGraphicsExtractor graphics, AbstractWidget button, int mouseX, int mouseY) {
+            drawIcon(graphics, button, mouseX, mouseY);
         }
-        @Override public void drawRegion(GuiGraphicsExtractor graphics, GuiTexturedButton button, int mouseX, int mouseY,
+        @Override public void drawRegion(GuiGraphicsExtractor graphics, AbstractWidget button, int mouseX, int mouseY,
                 int left, int top, int right, int bottom) {
             drawIconRegion(graphics, button, mouseX, mouseY, left, top, right, bottom);
         }
@@ -63,17 +63,23 @@ public final class NativeMapSkin extends NativeMapSkinState {
         KltytonGuiLayers.submitUi(graphics);
         if (hidden()) return;
 
+        graphics.nextStratum();
         NativeMapSkinPaint.icons(graphics, mouseX, mouseY, ICONS);
         renderedExtractor = graphics;
         if (!(target instanceof GuiMap)) flushTooltips(graphics);
     }
 
-    private static void drawIconRegion(GuiGraphicsExtractor graphics, GuiTexturedButton button, int mouseX, int mouseY,
+    private static void drawIcon(GuiGraphicsExtractor graphics, AbstractWidget button, int mouseX, int mouseY) {
+        if (button instanceof GuiTexturedButton textured) textured.extractContents(graphics, mouseX, mouseY, 0.0F);
+        else button.extractRenderState(graphics, mouseX, mouseY, 0.0F);
+    }
+
+    private static void drawIconRegion(GuiGraphicsExtractor graphics, AbstractWidget button, int mouseX, int mouseY,
                                        int left, int top, int right, int bottom) {
         if (right <= left || bottom <= top) return;
         graphics.enableScissor(left, top, right, bottom);
         try {
-            button.extractContents(graphics, mouseX, mouseY, 0.0F);
+            drawIcon(graphics, button, mouseX, mouseY);
         } finally { graphics.disableScissor(); }
     }
 

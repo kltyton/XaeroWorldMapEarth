@@ -1,8 +1,13 @@
 package io.github.kltyton.xaeroearth.client.chunkmap;
 
+import io.github.kltyton.xaeroearth.client.integration.create.ContraptionModelScope;
 import io.github.kltyton.kltytonui.chunkmap.KuiChunkMeshBaker;
 import io.github.kltyton.kltytonui.chunkmap.KuiNativeMesh;
 import io.github.kltyton.kltytonui.chunkmap.ChunkMapSnapshot;
+import io.github.kltyton.xaeroearth.client.chunkmap.geometry.DetailedGeometry;
+import io.github.kltyton.xaeroearth.client.chunkmap.geometry.QuadCapture;
+import io.github.kltyton.xaeroearth.client.chunkmap.biome.BiomeTintScope;
+import io.github.kltyton.xaeroearth.client.chunkmap.biome.BiomeTintSnapshot;
 import com.google.gson.Gson;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -64,6 +69,22 @@ public final class ChunkTiles implements AutoCloseable {
 
     public CompletableFuture<NativeTile> renderNativeTile(ChunkMapSnapshot snapshot, Tile tile,
                                                          boolean[] knownColumns, BooleanSupplier cancelled) {
+        return renderNativeTile(snapshot, tile, knownColumns, cancelled, false, null, Map.of());
+    }
+
+    public CompletableFuture<NativeTile> renderContraptionTile(ChunkMapSnapshot snapshot, Tile tile,
+            boolean[] knownColumns, Map<BlockPos, BlockEntity> entities, BooleanSupplier cancelled) {
+        return renderNativeTile(snapshot, tile, knownColumns, cancelled, false, null, entities);
+    }
+
+    CompletableFuture<NativeTile> renderDetailedTile(ChunkMapSnapshot snapshot, Tile tile,
+                                                     boolean[] knownColumns, BiomeTintSnapshot tint, BooleanSupplier cancelled) {
+        return renderNativeTile(snapshot, tile, knownColumns, cancelled, true, tint, Map.of());
+    }
+
+    private CompletableFuture<NativeTile> renderNativeTile(ChunkMapSnapshot snapshot, Tile tile,
+            boolean[] knownColumns, BooleanSupplier cancelled, boolean detail, BiomeTintSnapshot tint,
+            Map<BlockPos, BlockEntity> modelEntities) {
         if (knownColumns.length != snapshot.width() * snapshot.depth()) {
             throw new IllegalArgumentException("Known columns must match the snapshot dimensions");
         }
@@ -73,7 +94,10 @@ public final class ChunkTiles implements AutoCloseable {
         return CompletableFuture.supplyAsync(() -> {
             checkCancelled(stopped);
             int originX = Math.multiplyExact(tile.x(), 32), originZ = Math.multiplyExact(tile.z(), 32);
-            try (var mesh = baker.bake(snapshot, known, originX, originZ, stopped)) {
+            try (var tintScope = detail ? BiomeTintScope.open(tint) : null;
+                 var modelScope = ContraptionModelScope.open(modelEntities);
+                 var capture = detail ? QuadCapture.open() : null;
+                 var mesh = baker.bake(snapshot, known, originX, originZ, stopped)) {
                 checkCancelled(stopped);
                 int[] heights = new int[1024];
                 Arrays.fill(heights, 32767);
@@ -84,18 +108,24 @@ public final class ChunkTiles implements AutoCloseable {
                     var column = snapshot.column(sx, sz);
                     heights[z * 32 + x] = column.isEmpty() ? snapshot.minY() : column.get(column.size() - 1).toY() - 1;
                 }
-                return new NativeTile(tile, encodeMapLighting(mesh), heights);
+                byte[] encoded = capture != null && capture.compact() ? DetailedGeometry.encode(mesh) : KuiNativeMesh.encode(mesh);
+                return new NativeTile(tile, encodeMapLighting(encoded, mesh.vertexCount(), capture != null && capture.compact()), heights);
             }
         }, workers);
     }
 
-    private static byte[] encodeMapLighting(KuiChunkMeshBaker.Mesh mesh) {
-        byte[] model = KuiNativeMesh.encode(mesh);
+    private static byte[] encodeMapLighting(byte[] model, int vertexCount, boolean compact) {
         // KUI mesh v1 packs block and sky light in the low nibbles of UV2.
         // An ambient term keeps visible cave textures readable in the map.
-        int start = model.length - mesh.vertexCount() * KuiNativeMesh.STRIDE;
+        int start = model.length - vertexCount * KuiNativeMesh.STRIDE;
         int blockLight = java.nio.ByteOrder.nativeOrder() == java.nio.ByteOrder.LITTLE_ENDIAN ? 24 : 25;
+        int highByte = blockLight == 24 ? 1 : -1;
         for (int vertex = start; vertex < model.length; vertex += KuiNativeMesh.STRIDE) {
+            if (compact) {
+                int light = vertex + blockLight;
+                model[light + highByte] |= (byte) ((model[light] & 15) << 4);
+                model[light + Short.BYTES + highByte] |= (byte) ((model[light + Short.BYTES] & 15) << 4);
+            }
             applyAmbientLight(model, vertex + blockLight);
             applyAmbientLight(model, vertex + blockLight + Short.BYTES);
         }

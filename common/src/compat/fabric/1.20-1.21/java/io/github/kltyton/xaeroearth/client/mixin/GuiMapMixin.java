@@ -3,7 +3,8 @@ package io.github.kltyton.xaeroearth.client.mixin;
 import io.github.kltyton.xaeroearth.client.EarthClient;
 import io.github.kltyton.xaeroearth.client.integration.companion.CompanionMapSelection;
 import io.github.kltyton.xaeroearth.client.integration.companion.CompanionPortraits;
-import io.github.kltyton.xaeroearth.client.navigation.MapNavigationOption;
+import io.github.kltyton.xaeroearth.client.ui.MapContextActions;
+import io.github.kltyton.xaeroearth.client.mapmark.MapAnnotations;
 import io.github.kltyton.xaeroearth.client.ui.NativeMapSkin;
 import io.github.kltyton.xaeroearth.client.ui.NativeMapInput;
 import io.github.kltyton.xaeroearth.client.ui.NativeMapTerrain;
@@ -57,7 +58,10 @@ public abstract class GuiMapMixin {
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void earth$mouseDown(double mouseX, double mouseY, int button, CallbackInfoReturnable<Boolean> callback) {
-        if (button == 1) NativeMapTerrain.updatePointer((GuiMap) (Object) this, mouseX, mouseY);
+        if (button == 0 && MapAnnotations.click((GuiMap) (Object) this, mouseX, mouseY)) {
+            callback.setReturnValue(true);
+            return;
+        }
         if (button == 0 && CompanionMapSelection.press((GuiMap) (Object) this, mouseX, mouseY, GuiMap.hasShiftDown())) {
             callback.setReturnValue(true);
             return;
@@ -137,7 +141,7 @@ public abstract class GuiMapMixin {
 
     @Inject(method = "getRightClickOptions", at = @At("RETURN"), remap = false)
     private void earth$navigationOption(CallbackInfoReturnable<ArrayList<RightClickOption>> callback) {
-        MapNavigationOption.add((GuiMap) (Object) this, callback.getReturnValue());
+        MapContextActions.add((GuiMap) (Object) this, callback.getReturnValue());
     }
 
     @Inject(method = "removed", at = @At("HEAD"))

@@ -4,7 +4,7 @@
 uniform sampler2D SurfaceColor;
 uniform sampler2D SurfaceHeight;
 uniform sampler2D Coverage;
-layout(std140) uniform SurfaceParams { vec4 Grid; vec4 CoverageRegion; vec4 SurfaceOrigin; };
+layout(std140) uniform SurfaceParams { vec4 Grid; vec4 CoverageRegion; vec4 SurfaceOrigin; vec4 SurfaceExtra; };
 out vec3 localPosition;
 flat out ivec2 outlineCell;
 out float outlineDepth;
@@ -58,10 +58,10 @@ void main() {
     int rows = int(Grid.y);
     outlineCell = ivec2(-1);
     outlineDepth = 0.0;
-    if (cell >= columns * rows) {
-        int entry = cell - columns * rows;
-        ivec2 address = ivec2(entry % columns, rows + entry / columns);
-        int edgeCode = int(heightAt(address));
+    ivec2 address = ivec2(cell % columns, rows + cell / columns);
+    int code = int(heightAt(address));
+    if (cell >= int(CoverageRegion.z)) {
+        int edgeCode = code;
         int sampleIndex = edgeCode / 4;
         int edge = edgeCode % 4;
         outlineCell = ivec2(sampleIndex % columns, sampleIndex / columns);
@@ -96,10 +96,13 @@ void main() {
             outlineDepth = -1.0 - float(vertex.y);
         } else {
             corner = vertex.x == 0 ? start : end;
-            height = cornerHeight(corner);
-            outlineDepth = float(vertex.y);
+            float topHeight = cornerHeight(corner);
+            if (detailed(outlineCell)) {
+                topHeight = min(topHeight, heightAt(outlineCell));
+            }
             float faceHeight = clamp(Grid.z * 2.0 + 3.0, 5.0, 14.0);
-            if (vertex.y == 1) height = min(height, max(SurfaceOrigin.w, height - faceHeight));
+            height = vertex.y == 0 ? topHeight : min(topHeight, SurfaceOrigin.w);
+            outlineDepth = vertex.y == 0 ? 0.0 : clamp((topHeight - height) / faceHeight, 1.0, 64.0);
         }
         localPosition = vec3(float(corner.x) * Grid.z, height, float(corner.y) * Grid.z) + SurfaceOrigin.xyz;
         gl_Position = ProjMat * ModelViewMat * vec4(localPosition, 1.0);

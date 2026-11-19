@@ -7,9 +7,22 @@ public final class TerrainDetail {
     private TerrainDetail() {}
 
     public static double radius(double pixelsPerBlock, double viewportRadius) {
-        double detail = Math.max(0, Math.min(1, (pixelsPerBlock - 0.125) / 0.375));
-        return Math.min(viewportRadius, EarthPreferences.ISOMETRIC_DETAIL_DISTANCE.get() * detail);
+        return radius(pixelsPerBlock, viewportRadius, 0.0625, 0.1875);
     }
+
+    /** Permit provisional cached models only near the focus while their inputs are checked. */
+    public static double provisionalRadius(double pixelsPerBlock, double viewportRadius) {
+        return radius(pixelsPerBlock, viewportRadius, 0.125, 0.375);
+    }
+
+    private static double radius(double pixelsPerBlock, double viewportRadius, double minimumScale, double range) {
+        double detail = Math.max(0, Math.min(1, (pixelsPerBlock - minimumScale) / range));
+        int configured = EarthPreferences.ISOMETRIC_DETAIL_DISTANCE.get();
+        int limit = fast() ? Math.min(configured, 192) : configured;
+        return Math.min(viewportRadius, limit * detail);
+    }
+
+    public static boolean fast() { return EarthPreferences.FAST_TERRAIN.get(); }
 
     public static boolean intersects(double focusX, double focusZ, double radius, double x, double z, int size) {
         if (radius <= 0) return false;

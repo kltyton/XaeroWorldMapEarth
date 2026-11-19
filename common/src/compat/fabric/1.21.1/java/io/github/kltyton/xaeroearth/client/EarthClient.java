@@ -12,6 +12,7 @@ import net.minecraft.client.Minecraft;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.Screens;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
@@ -33,6 +34,9 @@ public final class EarthClient extends EarthClientState {
         ClientTickEvents.END_CLIENT_TICK.register(minecraft -> onTick());
         ClientLifecycleEvents.CLIENT_STOPPING.register(minecraft -> onStopping());
         ClientChunkEvents.CHUNK_LOAD.register((world, chunk) -> {
+            var pos = chunk.getPos(); changedChunk(world, pos.x, pos.z);
+        });
+        ServerChunkEvents.CHUNK_LOAD.register((world, chunk) -> {
             var pos = chunk.getPos(); changedChunk(world, pos.x, pos.z);
         });
         ScreenEvents.AFTER_INIT.register((minecraft, screen, width, height) -> {

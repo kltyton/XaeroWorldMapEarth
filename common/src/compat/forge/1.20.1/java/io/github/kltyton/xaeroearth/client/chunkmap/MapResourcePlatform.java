@@ -36,7 +36,7 @@ final class MapResourcePlatform {
         atlas.getTextureLocations().forEach(id -> {
             var sprite = atlas.getSprite(id);
             sprites.put(id.toString(), new SpriteLayout(sprite.getX(), sprite.getY(),
-                    sprite.getU0(), sprite.getU1(), sprite.getV0(), sprite.getV1()));
+                    sprite.getU0(), sprite.getU1(), sprite.getV0(), sprite.getV1(), sprite.contents().getUniqueFrames().limit(2).count() > 1));
         });
         return sprites;
     }

@@ -45,10 +45,10 @@ public final class NativeMapSkin extends NativeMapSkinState {
     private static final KuiMapDepthTarget tooltipDepth = new KuiMapDepthTarget();
 
     private static final NativeMapSkinPaint.IconRenderer<GuiGraphics> ICONS = new NativeMapSkinPaint.IconRenderer<>() {
-        @Override public void draw(GuiGraphics graphics, GuiTexturedButton button, int mouseX, int mouseY) {
-            button.renderWidget(graphics, mouseX, mouseY, 0.0F);
+        @Override public void draw(GuiGraphics graphics, AbstractWidget button, int mouseX, int mouseY) {
+            drawIcon(graphics, button, mouseX, mouseY);
         }
-        @Override public void drawRegion(GuiGraphics graphics, GuiTexturedButton button, int mouseX, int mouseY,
+        @Override public void drawRegion(GuiGraphics graphics, AbstractWidget button, int mouseX, int mouseY,
                 int left, int top, int right, int bottom) {
             drawIconRegion(graphics, button, mouseX, mouseY, left, top, right, bottom);
         }
@@ -72,7 +72,10 @@ public final class NativeMapSkin extends NativeMapSkinState {
         publishState();
         updateFeedback();
         graphics.flush();
-        try (var overlay = KuiServices.render().pushFilterRenderState()) {
+        try (var overlay = new KuiMapRenderState(Minecraft.getInstance().getMainRenderTarget(), tooltipDepth)) {
+            KuiServices.render().setDepthMask(true);
+            GlStateManager._clearDepth(1);
+            GlStateManager._clear(GL11.GL_DEPTH_BUFFER_BIT, Minecraft.ON_OSX);
             Base.pushDepthTest(false);
             try {
                 Base.drawOverlayDocument(graphics.pose(), document);
@@ -81,25 +84,32 @@ public final class NativeMapSkin extends NativeMapSkinState {
             } finally {
                 Base.popDepthTest();
             }
-        }
-        if (hidden()) return;
-
-        try (var foreground = KuiServices.render().pushFilterRenderState()) {
-            KuiServices.render().disableDepthTest();
-            NativeMapSkinPaint.icons(graphics, mouseX, mouseY, ICONS);
-            graphics.flush();
+            if (hidden()) return;
+            graphics.pose().pushPose();
+            try {
+                graphics.pose().translate(0, 0, 400);
+                NativeMapSkinPaint.icons(graphics, mouseX, mouseY, ICONS);
+                graphics.flush();
+            } finally {
+                graphics.pose().popPose();
+            }
         }
         renderedExtractor = graphics;
         if (!(target instanceof GuiMap)) flushTooltips(graphics);
     }
 
-    private static void drawIconRegion(GuiGraphics graphics, GuiTexturedButton button, int mouseX, int mouseY,
+    private static void drawIcon(GuiGraphics graphics, AbstractWidget button, int mouseX, int mouseY) {
+        if (button instanceof GuiTexturedButton textured) textured.renderWidget(graphics, mouseX, mouseY, 0.0F);
+        else button.render(graphics, mouseX, mouseY, 0.0F);
+    }
+
+    private static void drawIconRegion(GuiGraphics graphics, AbstractWidget button, int mouseX, int mouseY,
                                        int left, int top, int right, int bottom) {
         if (right <= left || bottom <= top) return;
         graphics.flush();
         graphics.enableScissor(left, top, right, bottom);
         try {
-            button.renderWidget(graphics, mouseX, mouseY, 0.0F);
+            drawIcon(graphics, button, mouseX, mouseY);
             graphics.flush();
         } finally { graphics.disableScissor(); }
     }

@@ -16,6 +16,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtUtils;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ChunkMap;
 import net.minecraft.world.level.ChunkPos;
@@ -87,36 +88,62 @@ final class ChunkStoragePlatform extends StoredChunkSource<ChunkStoragePlatform.
 
     private ChunkCopy decode(StoredContext context, Optional<CompoundTag> tag, int floor, int ceiling) {
         if (closed.get() || tag.isEmpty()) return null;
-        CompoundTag upgraded = context.storage.upgradeChunkTag(tag.get().copy(), -1, context.datafix.copy(),
-                SharedConstants.getCurrentVersion().dataVersion().version());
+        // IOWorker returns a detached pending-write copy or a newly decoded disk tag.
+        CompoundTag upgraded = tag.get();
+        int targetVersion = SharedConstants.getCurrentVersion().dataVersion().version();
+        if (NbtUtils.getDataVersion(upgraded, -1) < targetVersion)
+            upgraded = context.storage.upgradeChunkTag(upgraded, -1, context.datafix.copy(), targetVersion);
         int minimum = context.height.getMinSectionY();
         int count = context.height.getSectionsCount();
         var range = storedSectionRange(minimum, count, floor, ceiling,
                 upgraded.getCompoundOrEmpty("Heightmaps").getLongArray("WORLD_SURFACE").orElseGet(() -> new long[0]));
-        if (range.low() > range.high()) return null;
+        if (range != null && range.low() > range.high()) return null;
         var sectionsTag = upgraded.getListOrEmpty("sections");
         for (int i = sectionsTag.size() - 1; i >= 0; i--) {
             var sectionTag = sectionsTag.getCompoundOrEmpty(i);
             int y = sectionTag.getByteOr("Y", (byte) 0);
-            if (!range.contains(y)) sectionsTag.remove(i);
+            if (y < minimum || y >= minimum + count) sectionsTag.remove(i);
+            else if (range != null && !range.contains(y)) {
+                sectionTag.remove("block_states");
+                sectionTag.remove("BlockLight");
+                sectionTag.remove("SkyLight");
+            }
         }
         var parsed = SerializableChunkData.parse(context.height, context.factory, upgraded);
         if (parsed == null || !parsed.chunkStatus().isOrAfter(ChunkStatus.FULL)) return null;
-        SectionCopy[] sections = new SectionCopy[context.height.getSectionsCount()];
+        if (range == null) {
+            var available = new LevelChunkSection[count];
+            for (var section : parsed.sectionData()) {
+                int index = section.y() - minimum;
+                if (index >= 0 && index < count) available[index] = section.chunkSection();
+            }
+            range = scanSurface(minimum, count, index -> {
+                var section = available[index];
+                return section == null || section.hasOnlyAir() ? null : section;
+            }, (section, x0, y0, z0) -> section.getBlockState(x0, y0, z0).isAir());
+            if (range.low() > range.high()) return null;
+        }
+        NativeChunkSource.Section[] sections = new NativeChunkSource.Section[context.height.getSectionsCount()];
         for (var section : parsed.sectionData()) {
             int index = section.y() - context.height.getMinSectionY();
-            if (index >= 0 && index < sections.length && section.chunkSection() != null) sections[index] = new SectionCopy(section.chunkSection());
+            if (index >= 0 && index < sections.length && section.chunkSection() != null)
+                sections[index] = !range.contains(section.y())
+                        ? NativeChunkSource.copyBiomes(section.chunkSection()::getNoiseBiome)
+                        : new SectionCopy(section.chunkSection());
         }
         return new ChunkCopy(sections, minimum, range.low() << 4, (range.high() + 1) << 4);
     }
 
     private static ChunkCopy copy(LevelChunk chunk, int floor, int ceiling) {
         LevelChunkSection[] source = chunk.getSections();
-        SectionCopy[] sections = new SectionCopy[source.length];
+        NativeChunkSource.Section[] sections = new NativeChunkSource.Section[source.length];
         int minimum = chunk.getMinSectionY();
         var range = liveSectionRange(chunk, minimum, source.length, floor, ceiling);
-        for (int y = range.low(); y <= range.high(); y++)
-            sections[y - minimum] = new SectionCopy(source[y - minimum].copy());
+        for (int y = minimum; y < minimum + source.length; y++) {
+            var section = source[y - minimum];
+            sections[y - minimum] = !range.contains(y) ? NativeChunkSource.copyBiomes(section::getNoiseBiome)
+                    : new SectionCopy(section.copy());
+        }
         return new ChunkCopy(sections, minimum, range.low() << 4, (range.high() + 1) << 4);
     }
 

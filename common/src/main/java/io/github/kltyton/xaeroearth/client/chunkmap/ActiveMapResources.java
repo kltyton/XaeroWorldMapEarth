@@ -21,6 +21,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import io.github.kltyton.xaeroearth.client.chunkmap.projection.AnimatedAtlas;
 import net.minecraft.client.Minecraft;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -38,8 +39,10 @@ public final class ActiveMapResources implements AutoCloseable {
     });
     private final ChunkTiles tiles;
     private final CompletableFuture<ChunkTiles> renderer;
+    private final List<SpriteLayout> animatedSprites;
+    private volatile AnimatedAtlas animatedAtlas;
     private volatile String fingerprint;
-    record SpriteLayout(int x, int y, float u0, float u1, float v0, float v1) { }
+    public record SpriteLayout(int x, int y, float u0, float u1, float v0, float v1, boolean animated) { }
 
     public ActiveMapResources(ResourceManager manager, Path cacheDirectory) {
         this(manager, cacheDirectory, net.minecraft.util.Mth.clamp(Runtime.getRuntime().availableProcessors() / 2, 2, 4));
@@ -49,6 +52,7 @@ public final class ActiveMapResources implements AutoCloseable {
         tiles = new ChunkTiles(parallelism);
         Map<String, Resource> resources = MapResourcePlatform.resources(manager);
         Map<String, SpriteLayout> sprites = MapResourcePlatform.sprites();
+        animatedSprites = sprites.values().stream().filter(SpriteLayout::animated).toList();
         renderer = CompletableFuture.supplyAsync(() -> {
             try {
                 fingerprint = fingerprint(resources, sprites);
@@ -63,7 +67,7 @@ public final class ActiveMapResources implements AutoCloseable {
     private String fingerprint(Map<String, Resource> resources, Map<String, SpriteLayout> sprites) throws IOException {
         MessageDigest combined = digest();
         try (var output = new DataOutputStream(new DigestOutputStream(OutputStream.nullOutputStream(), combined))) {
-            output.writeUTF(MapResourcePlatform.FORMAT + "-resource-presence-2");
+            output.writeUTF(MapResourcePlatform.FORMAT + "-resource-presence-3");
             output.writeInt(resources.size());
             byte[] buffer = new byte[32768];
             for (var resource : resources.entrySet()) {
@@ -97,6 +101,7 @@ public final class ActiveMapResources implements AutoCloseable {
                 output.writeInt(sprite.x()); output.writeInt(sprite.y());
                 output.writeFloat(sprite.u0()); output.writeFloat(sprite.u1());
                 output.writeFloat(sprite.v0()); output.writeFloat(sprite.v1());
+                output.writeBoolean(sprite.animated());
             }
         }
         return HexFormat.of().formatHex(combined.digest());
@@ -109,6 +114,15 @@ public final class ActiveMapResources implements AutoCloseable {
 
     public CompletableFuture<ChunkTiles> renderer() { return renderer; }
     public String fingerprint() { return fingerprint; }
+    public List<SpriteLayout> animatedSprites() { return animatedSprites; }
+    public AnimatedAtlas animatedAtlas() {
+        var result = animatedAtlas;
+        if (result != null) return result;
+        synchronized (this) {
+            if (animatedAtlas == null) animatedAtlas = new AnimatedAtlas(animatedSprites);
+            return animatedAtlas;
+        }
+    }
     public long generation() { return generation; }
     public boolean isClosed() { return closed.get(); }
 

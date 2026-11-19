@@ -3,3 +3,6 @@ accessWidener v2 named
 # ActiveMapResources enumerates the uploaded atlas; MapEntityLayer releases native entity buffers.
 accessible field net/minecraft/client/renderer/texture/TextureAtlas texturesByName Ljava/util/Map;
 accessible field com/mojang/blaze3d/vertex/BufferBuilder buffer Ljava/nio/ByteBuffer;
+
+# NativeChunkSource fingerprints the biome Voronoi seed used by detached snapshots.
+accessible field net/minecraft/world/level/biome/BiomeManager biomeZoomSeed J

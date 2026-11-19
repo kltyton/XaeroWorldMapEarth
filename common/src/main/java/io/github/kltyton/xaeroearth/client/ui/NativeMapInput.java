@@ -4,6 +4,8 @@ import io.github.kltyton.xaeroearth.client.EarthClient;
 import io.github.kltyton.xaeroearth.client.EarthPreferences;
 import io.github.kltyton.xaeroearth.client.mixin.GuiMapAccess;
 import io.github.kltyton.xaeroearth.client.chunkmap.MapCamera;
+import io.github.kltyton.xaeroearth.client.ui.measurement.MapRuler;
+import io.github.kltyton.xaeroearth.client.mapmark.MapAnnotations;
 import java.util.HashSet;
 import java.util.Set;
 import net.minecraft.client.Minecraft;
@@ -13,7 +15,6 @@ import org.lwjgl.glfw.GLFW;
 import xaero.lib.client.gui.widget.dropdown.DropDownWidget;
 import xaero.map.gui.GuiMap;
 import xaero.map.animation.SlowingAnimation;
-import net.minecraft.world.phys.Vec3;
 
 /** Controls the map camera without forwarding movement to the player. */
 public final class NativeMapInput {
@@ -27,9 +28,12 @@ public final class NativeMapInput {
     private static GuiMap currentMap;
     private static EarthPreferences.View currentView;
     private static boolean streetSelected;
-    public static final double DEFAULT_MINIMAP_ZOOM_MULTIPLIER = 1.5;
-    private static double worldMapPixelsPerBlock = Double.NaN;
     private static boolean isometricOrientationDirty;
+    private static double isometricYaw, isometricPitch;
+    private static boolean topOrientationDirty;
+    private static double topYaw;
+    private static long nextOrientationSave;
+    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
     private static long lastIsometricPress;
     private static double streetYaw, streetAngle = Math.PI / 2;
     private static double streetY = Double.NaN;
@@ -38,21 +42,39 @@ public final class NativeMapInput {
     private static boolean rotating;
     private static int rotatingButton = -1;
     private static double lastMouseX, lastMouseY;
-    private static MapCamera panCamera, releasedPanCamera;
-    private static Vec3 panAnchor;
+    private static PlanarPan drag, releasedDrag;
     private static double panHeight = Double.NaN;
 
+    /** Inverts the projection restricted to the fixed horizontal drag plane. */
+    private record PlanarPan(MapCamera camera, double mouseX, double mouseY,
+                             double dxX, double dxY, double dzX, double dzY) {
+        static PlanarPan start(MapCamera camera, double mouseX, double mouseY) {
+            if (camera == null || !finite(camera.x(), camera.z()) || camera.width() <= 0 || camera.height() <= 0)
+                return null;
+            var matrix = camera.viewProjectionMatrix();
+            double xx = matrix.m00(), xz = matrix.m20(), yx = matrix.m01(), yz = matrix.m21();
+            double determinant = xx * yz - xz * yx;
+            if (!Double.isFinite(determinant) || Math.abs(determinant) < 1e-12) return null;
+            double horizontal = 2.0 / (camera.width() * determinant), vertical = -2.0 / (camera.height() * determinant);
+            return new PlanarPan(camera, mouseX, mouseY, yz * horizontal, -xz * vertical,
+                    -yx * horizontal, xx * vertical);
+        }
+        double x(double screenX, double screenY) { return dxX * screenX + dxY * screenY; }
+        double z(double screenX, double screenY) { return dzX * screenX + dzY * screenY; }
+    }
+
     public static void prepare(GuiMap map) {
+        flushOrientation();
         if (currentMap != map) {
             if (currentMap != null) close(currentMap);
             currentMap = map;
         }
         var view = view();
         if (view != currentView) {
-            saveOrientation();
+            flushOrientation();
             restoreStreetOrigin(map);
             pressed.clear(); rotating = false;
-            panCamera = releasedPanCamera = null; panAnchor = null; panHeight = Double.NaN;
+            drag = releasedDrag = null; panHeight = Double.NaN;
             if (currentView == EarthPreferences.View.STREET) resetStreetCamera();
             currentView = view;
         }
@@ -73,70 +95,77 @@ public final class NativeMapInput {
         prepare(map);
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && currentView != EarthPreferences.View.STREET
                 && canControl(map) && map.getChildAt(mouseX, mouseY).isEmpty()) {
-            panCamera = NativeMapTerrain.camera();
-            releasedPanCamera = null;
-            if (panCamera != null) {
-                panAnchor = planePoint(panCamera, mouseX, mouseY);
-                panHeight = panCamera.y();
-            }
+            drag = PlanarPan.start(NativeMapTerrain.camera(), mouseX, mouseY);
+            releasedDrag = null;
+            if (drag != null) panHeight = drag.camera().y();
         }
         boolean rotationButton = button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE
                 || currentView == EarthPreferences.View.STREET && button == GLFW.GLFW_MOUSE_BUTTON_LEFT;
-        if (!rotationButton || !canControl(map)
-                || currentView == EarthPreferences.View.TOP || map.getChildAt(mouseX, mouseY).isPresent()) return false;
+        if (!rotationButton || !canControl(map) || map.getChildAt(mouseX, mouseY).isPresent()) return false;
         rotating = true; rotatingButton = button; lastMouseX = mouseX; lastMouseY = mouseY;
+        if (currentView == EarthPreferences.View.ISOMETRIC && !isometricOrientationDirty) {
+            isometricYaw = EarthPreferences.ISOMETRIC_YAW.get();
+            isometricPitch = EarthPreferences.ISOMETRIC_PITCH.get();
+        } else if (currentView == EarthPreferences.View.TOP && !topOrientationDirty) {
+            topYaw = EarthPreferences.TOP_YAW.get();
+        }
         return true;
     }
 
     public static boolean mouseReleased(GuiMap map, double mouseX, double mouseY, int button) {
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && currentMap == map && panCamera != null) {
-            releasedPanCamera = panCamera; panCamera = null; panAnchor = null;
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && MapAnnotations.release(map, mouseX, mouseY)) return true;
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && currentMap == map && drag != null) {
+            releasedDrag = drag; drag = null;
         }
         if (button != rotatingButton || currentMap != map || !rotating) return false;
         rotating = false; rotatingButton = -1;
-        saveOrientation();
+        flushOrientation();
         return canControl(map);
     }
 
     public static void pan(GuiMap map, double mouseX, double mouseY) {
-        if (currentMap != map || panCamera == null) return;
-        Vec3 point = planePoint(panCamera, mouseX, mouseY);
+        if (currentMap != map || drag == null) return;
+        double dx = drag.mouseX() - mouseX, dy = drag.mouseY() - mouseY;
+        double x = drag.camera().x() + drag.x(dx, dy), z = drag.camera().z() + drag.z(dx, dy);
+        if (!finite(x, z)) return;
         var access = (GuiMapAccess) map;
-        access.earth$cameraX(panCamera.x() + panAnchor.x - point.x);
-        access.earth$cameraZ(panCamera.z() + panAnchor.z - point.z);
+        access.earth$cameraX(x);
+        access.earth$cameraZ(z);
     }
 
-    private static Vec3 planePoint(MapCamera camera, double x, double y) {
-        var ray = camera.ray(x, y);
-        double distance = -ray[0].y / ray[1].y;
-        return new Vec3(ray[0].x + ray[1].x * distance, 0, ray[0].z + ray[1].z * distance);
+    private static boolean finite(double x, double z) {
+        return Double.isFinite(x) && Double.isFinite(z);
     }
 
     public static void releasePan(GuiMap map) {
-        MapCamera released = releasedPanCamera != null ? releasedPanCamera : panCamera;
+        PlanarPan released = releasedDrag != null ? releasedDrag : drag;
         if (currentMap != map || released == null) return;
+        drag = releasedDrag = null;
         var access = (GuiMapAccess) map;
+        var nativeX = access.earth$cameraAnimationX();
+        var nativeZ = access.earth$cameraAnimationZ();
         double x = access.earth$cameraX(), z = access.earth$cameraZ();
-        double dx = access.earth$cameraAnimationX().getDestination() - x;
-        double dz = access.earth$cameraAnimationZ().getDestination() - z;
-        double c = Math.cos(released.yaw()), s = Math.sin(released.yaw());
-        double vertical = dz / Math.cos(released.angle());
-        access.earth$cameraAnimationX(new SlowingAnimation(x, x + c * dx - s * vertical, 0.9, 0.01));
-        access.earth$cameraAnimationZ(new SlowingAnimation(z, z + s * dx + c * vertical, 0.9, 0.01));
-        panCamera = releasedPanCamera = null; panAnchor = null;
+        double scale = released.camera().pixelsPerBlock();
+        double dx = nativeX == null ? 0 : (nativeX.getDestination() - x) * scale;
+        double dy = nativeZ == null ? 0 : (nativeZ.getDestination() - z) * scale;
+        double nextX = x + released.x(dx, dy), nextZ = z + released.z(dx, dy);
+        access.earth$cameraAnimationX(finite(x, nextX) ? new SlowingAnimation(x, nextX, 0.9, 0.01) : null);
+        access.earth$cameraAnimationZ(finite(z, nextZ) ? new SlowingAnimation(z, nextZ, 0.9, 0.01) : null);
     }
 
     public static void mouseMoved(GuiMap map, double x, double y) {
         prepare(map);
+        MapAnnotations.drag(map, x, y);
         if (!rotating) return;
         if (!canControl(map)) { rotating = false; return; }
         double dx = x - lastMouseX, dy = y - lastMouseY;
         if (currentView == EarthPreferences.View.ISOMETRIC) {
-            EarthPreferences.ISOMETRIC_YAW.set(Math.IEEEremainder(EarthPreferences.ISOMETRIC_YAW.get()
-                    + Math.toDegrees(dx * 2 / Math.max(1, map.width)), 360));
-            EarthPreferences.ISOMETRIC_PITCH.set(Mth.clamp(EarthPreferences.ISOMETRIC_PITCH.get()
-                    + Math.toDegrees(dy * 2 / Math.max(1, map.height)), 1, 90));
+            isometricYaw = Math.IEEEremainder(isometricYaw + Math.toDegrees(dx * 2 / Math.max(1, map.width)), 360);
+            isometricPitch = Mth.clamp(isometricPitch + Math.toDegrees(dy * 2 / Math.max(1, map.height)), 1, 90);
             isometricOrientationDirty = true;
+        } else if (currentView == EarthPreferences.View.TOP && dx != 0.0) {
+            topYaw = Math.IEEEremainder(topYaw + Math.toDegrees(dx * 2 / Math.max(1, map.width)), 360);
+            topOrientationDirty = true;
         } else if (currentView == EarthPreferences.View.STREET) {
             streetYaw = Math.IEEEremainder(streetYaw + dx * 2 / Math.max(1, map.height), Math.PI * 2);
             streetAngle = Mth.clamp(streetAngle - dy * 2 / Math.max(1, map.height), 0.0001, Math.PI - 0.0001);
@@ -146,6 +175,7 @@ public final class NativeMapInput {
 
     public static boolean keyPressed(GuiMap map, int key, int modifiers) {
         prepare(map);
+        if (key == GLFW.GLFW_KEY_ESCAPE && MapAnnotations.cancel(map)) return true;
         if (currentView != EarthPreferences.View.STREET || !canControl(map) || !CAMERA_KEYS.contains(key)
                 || (modifiers & (GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_ALT | GLFW.GLFW_MOD_SUPER)) != 0) return false;
         pressed.add(key);
@@ -159,6 +189,7 @@ public final class NativeMapInput {
 
     public static void tick(GuiMap map) {
         prepare(map);
+        if (EarthClient.themed(map)) recoverInvalidPosition(map);
         if (!canControl(map)) { pressed.clear(); rotating = false; return; }
         if (currentView != EarthPreferences.View.STREET || pressed.isEmpty() || Double.isNaN(streetY)) return;
         double right = (pressed.contains(GLFW.GLFW_KEY_D) ? 1 : 0) - (pressed.contains(GLFW.GLFW_KEY_A) ? 1 : 0);
@@ -184,19 +215,59 @@ public final class NativeMapInput {
         streetY += up * step;
     }
 
+    private static void recoverInvalidPosition(GuiMap map) {
+        var access = (GuiMapAccess) map;
+        if (finite(access.earth$cameraX(), access.earth$cameraZ())) return;
+        var last = NativeMapTerrain.camera();
+        var player = Minecraft.getInstance().player;
+        if (last != null && finite(last.x(), last.z())) {
+            access.earth$cameraX(last.x());
+            access.earth$cameraZ(last.z());
+        } else if (player != null) {
+            access.earth$cameraX(player.getX());
+            access.earth$cameraZ(player.getZ());
+        }
+        access.earth$cameraDestination(null);
+        access.earth$cameraAnimationX(null);
+        access.earth$cameraAnimationZ(null);
+        drag = releasedDrag = null;
+        panHeight = Double.NaN;
+    }
+
     public static double yaw() {
         return switch (view()) {
-            case ISOMETRIC -> Math.toRadians(EarthPreferences.ISOMETRIC_YAW.get());
-            case TOP -> 0;
+            case ISOMETRIC -> Math.toRadians(isometricOrientationDirty ? isometricYaw : EarthPreferences.ISOMETRIC_YAW.get());
+            case TOP -> Math.toRadians(topOrientationDirty ? topYaw : EarthPreferences.TOP_YAW.get());
             case STREET -> streetYaw;
         };
     }
 
     public static double angle() {
         return switch (view()) {
-            case ISOMETRIC -> Math.toRadians(90 - EarthPreferences.ISOMETRIC_PITCH.get());
+            case ISOMETRIC -> Math.toRadians(90 - (isometricOrientationDirty ? isometricPitch : EarthPreferences.ISOMETRIC_PITCH.get()));
             case TOP -> 0;
             case STREET -> streetAngle;
+        };
+    }
+
+    /** Persistent map view for the HUD minimap (temporary world-map street view never leaks to HUD). */
+    public static EarthPreferences.View hudView() {
+        var saved = EarthPreferences.VIEW.get();
+        return saved == EarthPreferences.View.STREET ? EarthPreferences.View.ISOMETRIC : saved;
+    }
+
+    public static double hudYaw() {
+        return switch (hudView()) {
+            case ISOMETRIC -> Math.toRadians(isometricOrientationDirty ? isometricYaw : EarthPreferences.ISOMETRIC_YAW.get());
+            case TOP -> Math.toRadians(topOrientationDirty ? topYaw : EarthPreferences.TOP_YAW.get());
+            case STREET -> 0;
+        };
+    }
+
+    public static double hudAngle() {
+        return switch (hudView()) {
+            case ISOMETRIC -> Math.toRadians(90 - (isometricOrientationDirty ? isometricPitch : EarthPreferences.ISOMETRIC_PITCH.get()));
+            case TOP, STREET -> 0;
         };
     }
 
@@ -210,7 +281,9 @@ public final class NativeMapInput {
     }
 
     public static void close(GuiMap map) {
+        MapAnnotations.cancel(map);
         if (currentMap != map) return;
+        MapRuler.clear();
         reset();
     }
 
@@ -226,7 +299,7 @@ public final class NativeMapInput {
     }
 
     public static void suspend() {
-        pressed.clear(); rotating = false; saveOrientation();
+        pressed.clear(); rotating = false; flushOrientation();
     }
 
     public static void selectView(GuiMap map, EarthPreferences.View view) {
@@ -234,9 +307,10 @@ public final class NativeMapInput {
         if (view == EarthPreferences.View.ISOMETRIC) {
             long now = System.nanoTime();
             if (lastIsometricPress != 0 && now - lastIsometricPress <= DOUBLE_CLICK_NANOS) {
-                EarthPreferences.ISOMETRIC_YAW.set(DEFAULT_ISOMETRIC_YAW);
-                EarthPreferences.ISOMETRIC_PITCH.set(DEFAULT_ISOMETRIC_PITCH);
-                isometricOrientationDirty = false;
+                isometricYaw = DEFAULT_ISOMETRIC_YAW;
+                isometricPitch = DEFAULT_ISOMETRIC_PITCH;
+                isometricOrientationDirty = true;
+                flushOrientation();
                 lastIsometricPress = 0;
             } else lastIsometricPress = now;
         } else lastIsometricPress = 0;
@@ -254,33 +328,42 @@ public final class NativeMapInput {
     }
 
     public static double worldMapScale(GuiMap map) {
-        double currentScale = ((GuiMapAccess) map).earth$scale() / Minecraft.getInstance().getWindow().getGuiScale();
-        if (currentScale > 0 && Double.isFinite(currentScale)) worldMapPixelsPerBlock = currentScale;
-        return currentScale;
-    }
-
-    public static double minimapScale(double xaeroScale) {
-        double base = xaeroScale * EarthPreferences.MINIMAP_ZOOM_MULTIPLIER.get();
-        if (!EarthPreferences.MINIMAP_FOLLOW_WORLD_ZOOM.get() || !Double.isFinite(worldMapPixelsPerBlock)) return base;
-        double framing = Math.pow(worldMapPixelsPerBlock, 0.20);
-        return base * Mth.clamp(framing, 0.75, 1.35);
+        return ((GuiMapAccess) map).earth$scale() / Minecraft.getInstance().getWindow().getGuiScale();
     }
 
     public static void reset() {
-        saveOrientation();
+        rotating = false;
+        flushOrientation(true);
         lastIsometricPress = 0;
         if (currentMap != null) restoreStreetOrigin(currentMap);
         currentMap = null; currentView = null; pressed.clear(); rotating = false; rotatingButton = -1;
         streetSelected = false;
         resetStreetCamera();
         rememberStreetOrigin = false;
-        panCamera = releasedPanCamera = null; panAnchor = null; panHeight = Double.NaN;
+        drag = releasedDrag = null; panHeight = Double.NaN;
     }
 
-    private static void saveOrientation() {
-        if (!isometricOrientationDirty) return;
-        EarthPreferences.save();
-        isometricOrientationDirty = false;
+    public static void flushOrientation() { flushOrientation(false); }
+
+    private static void flushOrientation(boolean immediate) {
+        if (!(isometricOrientationDirty || topOrientationDirty)
+                || !immediate && (rotating || System.nanoTime() < nextOrientationSave)) return;
+        nextOrientationSave = System.nanoTime() + 250_000_000L;
+        try {
+            if (isometricOrientationDirty) {
+                EarthPreferences.ISOMETRIC_YAW.set(isometricYaw);
+                EarthPreferences.ISOMETRIC_PITCH.set(isometricPitch);
+            }
+            if (topOrientationDirty) EarthPreferences.TOP_YAW.set(topYaw);
+            EarthPreferences.save();
+            isometricOrientationDirty = false;
+            topOrientationDirty = false;
+        } catch (RuntimeException failure) {
+            Throwable cause = failure;
+            while (cause.getCause() != null && cause.getCause() != cause) cause = cause.getCause();
+            if (!(cause instanceof java.io.IOException)) throw failure;
+            LOGGER.warn("Could not save map orientation; will retry", failure);
+        }
     }
 
     private static void resetStreetCamera() {

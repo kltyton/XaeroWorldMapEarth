@@ -9,10 +9,13 @@ import java.util.PriorityQueue;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 /** Incremental A* over real collision surfaces in chunks already present on the client. */
@@ -21,10 +24,17 @@ final class WalkingRoute {
     private static final int MAX_EXPANSIONS = 10_000;
     private static final float EPSILON = 0.002F;
     private static final double DROP = 1.25;
+    private static final double MAX_MAPPED_HEIGHT_ERROR = 8;
     private static final double MAX_SHORTCUT = 64;
+    private static final double STRAIGHT_SPAN = 4;
+    private static final long SLICE_NANOS = 2_000_000L;
+    private static final long URGENT_SLICE_NANOS = 4_000_000L;
+    private static final double CONTINUATION_TARGET_PROGRESS = 48;
     private static final int[][] DIRECTIONS = {{1,0},{-1,0},{0,1},{0,-1},{1,1},{-1,1},{1,-1},{-1,-1},{0,0}};
 
-    record Plan(List<Vec3> steps, boolean arrives) {}
+    record Plan(List<Vec3> steps, boolean arrives, boolean waitingForChunks) {
+        Plan(List<Vec3> steps, boolean arrives) { this(steps, arrives, false); }
+    }
     record Edge(Vec3 from, Vec3 to) {}
     private record LandingProbe(double x, double y, double z) {}
     private record Node(Vec3 feet, Node parent, double cost, double estimate) implements Comparable<Node> {
@@ -47,7 +57,11 @@ final class WalkingRoute {
     private final Map<LandingProbe, List<Vec3>> landingCache = new HashMap<>();
     private Node frontier;
     private int expanded;
-    private boolean checkedDirect;
+    private int slices;
+    private boolean checkedDirect, blockedByUnloaded;
+    private Vec3 straightTarget, straightProgress;
+    private boolean straightArrives;
+    private int straightSpan, straightSpans;
 
     WalkingRoute(ClientLevel level, Entity mover, AABB footprint, Vec3 start, Vec3 goal, List<Edge> blockedSteps) {
         this.level = level;
@@ -59,6 +73,7 @@ final class WalkingRoute {
         selectedGoal = goal;
         this.goal = groundDestination(goal);
         initialEstimate = distance(start, this.goal);
+        if (!NavigationCollision.loaded(level, footprint.move(start))) blockedByUnloaded = true;
         var first = new Node(start, null, 0, initialEstimate);
         open.add(first);
         costs.put(start, 0.0);
@@ -74,6 +89,7 @@ final class WalkingRoute {
         BlockPos surface = new BlockPos(Mth.floor(selected.x), Mth.floor(selected.y - EPSILON), Mth.floor(selected.z));
         if (!level.getChunkSource().hasChunk(surface.getX() >> 4, surface.getZ() >> 4)) return selected;
         var hit = level.getBlockState(surface);
+        if (hit.isAir()) return resolveAirColumn(selected);
         if (!hit.is(BlockTags.LEAVES) && !(hit.is(Blocks.SNOW) && level.getBlockState(surface.below()).is(BlockTags.LEAVES)))
             return selected;
         Vec3 ground = groundBelow(selected);
@@ -82,6 +98,19 @@ final class WalkingRoute {
             if (direction[0] == 0 && direction[1] == 0) continue;
             ground = groundBelow(selected.add(direction[0], 0, direction[1]));
             if (ground != null) return ground;
+        }
+        return selected;
+    }
+
+    private Vec3 resolveAirColumn(Vec3 selected) {
+        // A coarse map sample can report air until the destination enters the client's live chunk radius.
+        // Treat the first real surface as a candidate, preserving any intervening floors and the selected column.
+        var hit = level.clip(new ClipContext(selected, selected.add(0, -MAX_MAPPED_HEIGHT_ERROR, 0),
+                ClipContext.Block.COLLIDER, ClipContext.Fluid.ANY, mover));
+        if (hit.getType() != HitResult.Type.BLOCK) return selected;
+        Vec3 surface = hit.getLocation();
+        for (Vec3 feet : landings(selected.x, selected.z, surface.y)) {
+            if (feet.y <= surface.y + EPSILON && feet.y >= surface.y - 0.11) return feet;
         }
         return selected;
     }
@@ -104,20 +133,38 @@ final class WalkingRoute {
 
     /** Returns null while searching. A completed empty plan means no safe progress is known. */
     Plan advance() {
+        return advance(false, false);
+    }
+
+    /**
+     * Advances incremental search. For initial planning, emit a short verified prefix quickly so
+     * movement starts immediately. For background continuation while already walking, keep searching
+     * for a multi-chunk segment unless {@code urgent} signals the mover is nearing the current end.
+     */
+    Plan advance(boolean continuationMode, boolean urgent) {
+        long deadline = System.nanoTime() + (urgent ? URGENT_SLICE_NANOS : SLICE_NANOS);
+        int workLimit = urgent ? 320 : 160;
         if (!checkedDirect) {
-            checkedDirect = true;
-            double length = horizontal(start, goal);
-            boolean direct = length <= MAX_SHORTCUT;
-            Vec3 target = direct ? goal : start.lerp(goal, MAX_SHORTCUT / length);
-            for (Vec3 landing : landings(target.x, target.z, start.y)) {
-                if ((!direct || Math.abs(landing.y - goal.y) <= 1.75) && flat(start, landing))
-                    return new Plan(List.of(landing), direct);
-            }
+            Plan straight = advanceStraight(deadline);
+            if (straight != null || !checkedDirect) return straight;
+            if (System.nanoTime() >= deadline) return null;
         }
-        long deadline = System.nanoTime() + 2_000_000L;
+        slices++;
         int work = 0;
-        while (!open.isEmpty() && expanded < MAX_EXPANSIONS && work++ < 160) {
-            if (work > 1 && System.nanoTime() >= deadline) return null;
+        while (!open.isEmpty() && expanded < MAX_EXPANSIONS && work++ < workLimit) {
+            if (work > 1 && System.nanoTime() >= deadline) {
+                if (frontier != null) {
+                    double progress = initialEstimate - frontier.estimate;
+                    if (urgent && progress >= 4 && frontier.cost <= 3.0 * progress)
+                        return plan(frontier, false);
+                    if (!continuationMode && slices >= 8 && progress >= 8 && frontier.cost <= 2.5 * progress)
+                        return plan(frontier, false);
+                    if (continuationMode && progress >= CONTINUATION_TARGET_PROGRESS
+                            && frontier.cost <= 2.5 * progress)
+                        return plan(frontier, false);
+                }
+                return null;
+            }
             Node current = open.remove();
             if (current.cost > costs.getOrDefault(current.feet, Double.POSITIVE_INFINITY)) continue;
             Vec3 from = current.feet;
@@ -146,7 +193,11 @@ final class WalkingRoute {
                 double x = Math.floor(from.x) + 0.5 + direction[0];
                 double z = Math.floor(from.z) + 0.5 + direction[1];
                 if (Math.hypot(x - start.x, z - start.z) > RADIUS) continue;
-                for (Vec3 to : landings(x, z, from.y)) {
+                List<Vec3> targets = landings(x, z, from.y);
+                if (targets.isEmpty() && isRelevantUnloadedStep(from, x, z, current.parent == null)) {
+                    blockedByUnloaded = true;
+                }
+                for (Vec3 to : targets) {
                     double rise = to.y - from.y;
                     double step = horizontal(from, to) + Math.abs(rise) * (rise > 0.55 ? 1.6 : 0.65);
                     double cost = current.cost + step;
@@ -156,8 +207,62 @@ final class WalkingRoute {
                 }
             }
         }
-        if (!open.isEmpty() && expanded < MAX_EXPANSIONS) return null;
-        return frontier == null ? new Plan(List.of(), false) : plan(frontier, false);
+        if (!open.isEmpty() && expanded < MAX_EXPANSIONS) {
+            if (urgent && frontier != null && initialEstimate - frontier.estimate >= 4)
+                return plan(frontier, false);
+            return null;
+        }
+        return frontier == null ? new Plan(List.of(), false, blockedByUnloaded) : plan(frontier, false);
+    }
+
+    private Plan advanceStraight(long deadline) {
+        if (straightTarget == null) {
+            double length = horizontal(start, goal);
+            Vec3 requested = length <= MAX_SHORTCUT ? goal : start.lerp(goal, MAX_SHORTCUT / length);
+            Vec3 target = loadedStraightPrefix(requested);
+            straightArrives = length <= MAX_SHORTCUT && target.equals(requested);
+            if (straightArrives || horizontal(start, target) >= 8) for (Vec3 landing : landings(target.x, target.z, start.y)) {
+                if (Math.abs(landing.y - start.y) > EPSILON || straightArrives && Math.abs(landing.y - goal.y) > 1.75
+                        || repeatsBlockedStep(start, landing)) continue;
+                straightTarget = landing;
+                straightProgress = start;
+                straightSpans = Math.max(1, (int) Math.ceil(horizontal(start, landing) / STRAIGHT_SPAN));
+                break;
+            }
+        }
+        if (straightTarget != null) {
+            do {
+                Vec3 end = straightSpan + 1 == straightSpans ? straightTarget
+                        : start.lerp(straightTarget, (straightSpan + 1) / (double) straightSpans);
+                if (!flat(straightProgress, end)) {
+                    checkedDirect = true;
+                    return null;
+                }
+                straightProgress = end;
+                if (++straightSpan == straightSpans) {
+                    checkedDirect = true;
+                    return new Plan(List.of(straightTarget), straightArrives);
+                }
+            } while (System.nanoTime() < deadline);
+            return null;
+        }
+        checkedDirect = true;
+        return null;
+    }
+
+    /** Reuse the loaded part of a straight leg while the next chunks are still streaming. */
+    private Vec3 loadedStraightPrefix(Vec3 requested) {
+        int spans = Math.max(1, (int) Math.ceil(horizontal(start, requested) / STRAIGHT_SPAN));
+        Vec3 previous = start;
+        AABB previousFootprint = footprint.move(start);
+        for (int i = 1; i <= spans; i++) {
+            Vec3 sample = i == spans ? requested : start.lerp(requested, i / (double) spans);
+            AABB currentFootprint = footprint.move(sample.x, start.y, sample.z);
+            if (!loaded(previousFootprint.minmax(currentFootprint))) return previous;
+            previous = sample;
+            previousFootprint = currentFootprint;
+        }
+        return requested;
     }
 
     private Plan plan(Node end, boolean arrives) {
@@ -172,7 +277,7 @@ final class WalkingRoute {
             while (last + 1 < steps.size()
                     && horizontal(from, steps.get(last + 1)) <= MAX_SHORTCUT
                     && Math.abs(from.y - steps.get(last + 1).y) <= EPSILON) last++;
-            while (last > i && !flat(from, steps.get(last))) last--;
+            while (last > i && !flat(from, steps.get(last))) last = i + (last - i) / 2;
             from = steps.get(last);
             simplified.add(from);
             i = last + 1;
@@ -180,7 +285,7 @@ final class WalkingRoute {
         return new Plan(List.copyOf(simplified), arrives);
     }
 
-    private List<Vec3> landings(double x, double z, double y) {
+    List<Vec3> landings(double x, double z, double y) {
         AABB at = footprint.move(x, y, z);
         AABB probe = new AABB(at.minX, y - DROP - EPSILON, at.minZ, at.maxX, y + riseLimit + EPSILON, at.maxZ);
         if (!loaded(probe)) return List.of();
@@ -198,18 +303,36 @@ final class WalkingRoute {
                 if (!result.contains(feet) && standing(feet)) result.add(feet);
             }
         }
+        int x = Mth.floor(key.x), z = Mth.floor(key.z);
+        for (int y = Mth.floor(key.y + riseLimit); y >= Mth.floor(key.y - DROP) - 1; y--) {
+            var pos = new BlockPos(x, y, z);
+            var fluid = level.getFluidState(pos);
+            if (!fluid.is(FluidTags.WATER) || level.getFluidState(pos.above()).is(FluidTags.WATER)) continue;
+            double feetY = y + fluid.getHeight(level, pos) - 0.10;
+            if (feetY < key.y - DROP || feetY > key.y + riseLimit) continue;
+            var feet = new Vec3(key.x, feetY, key.z);
+            if (!result.contains(feet) && standing(feet)) result.add(feet);
+        }
         return result;
     }
 
     boolean standing(Vec3 feet) {
         AABB body = footprint.move(feet);
         return clear(body) && safeFooting(body, feet.y)
-                && level.getBlockCollisions(mover, body.move(0, -0.06, 0)).iterator().hasNext();
+                && (inWater(feet) || level.getBlockCollisions(mover, body.move(0, -0.06, 0)).iterator().hasNext());
     }
 
     boolean traversable(Vec3 from, Vec3 to) {
         double change = to.y - from.y;
         if (change > riseLimit || change < -DROP || !standing(to)) return false;
+        // In water deeper than vanilla's 0.4 fluid jump threshold, entities float via jumpInLiquid
+        // and can only vault ~0.65 blocks above the water surface (e.g. onto a 1-block bank or slab),
+        // never onto a 2-block cliff above the riverbed.
+        if (inWater(from) && !inWater(to)) {
+            double surface = waterSurfaceY(from);
+            if (Double.isFinite(surface) && waterDepthAt(from, surface) > 0.4 && to.y > surface + 0.65)
+                return false;
+        }
         if (Math.abs(change) <= EPSILON) return flat(from, to);
         if (repeatsBlockedStep(from, to)) return false;
         double high = Math.max(from.y, to.y);
@@ -225,6 +348,20 @@ final class WalkingRoute {
                 || !NavigationCollision.clear(level, mover, footprint, from, to))
             return false;
         return supported(from, to);
+    }
+
+    boolean climbAhead(Vec3 from, Vec3 waypoint) {
+        double rise = waypoint.y - from.y;
+        if (rise <= NavigationPlatform.stepHeight(mover) + EPSILON || rise > riseLimit) return false;
+        double distance = horizontal(from, waypoint);
+        if (distance < EPSILON) return false;
+        double probeDistance = Math.min(distance, 1.0);
+        double x = from.x + (waypoint.x - from.x) * probeDistance / distance;
+        double z = from.z + (waypoint.z - from.z) * probeDistance / distance;
+        for (Vec3 landing : landings(x, z, from.y)) {
+            if (Math.abs(landing.y - waypoint.y) <= EPSILON && traversable(from, landing)) return true;
+        }
+        return false;
     }
 
     private boolean repeatsBlockedStep(Vec3 from, Vec3 to) {
@@ -244,7 +381,8 @@ final class WalkingRoute {
         for (int i = 1; i <= samples; i++) {
             Vec3 feet = from.lerp(to, i / (double) samples);
             AABB body = footprint.move(feet);
-            if (!safeFooting(body, feet.y) || !level.getBlockCollisions(mover, body.move(0, -0.06, 0)).iterator().hasNext())
+            if (!safeFooting(body, feet.y) || !inWater(feet)
+                    && !level.getBlockCollisions(mover, body.move(0, -0.06, 0)).iterator().hasNext())
                 return false;
         }
         return true;
@@ -265,9 +403,44 @@ final class WalkingRoute {
 
     private boolean safeBlock(BlockPos pos) {
         var state = level.getBlockState(pos);
-        return state.getFluidState().isEmpty() && !state.is(Blocks.FIRE) && !state.is(Blocks.SOUL_FIRE)
+        return (state.getFluidState().isEmpty() || state.getFluidState().is(FluidTags.WATER))
+                && !state.is(Blocks.FIRE) && !state.is(Blocks.SOUL_FIRE)
                 && !state.is(Blocks.POWDER_SNOW) && !state.is(Blocks.MAGMA_BLOCK) && !state.is(Blocks.CAMPFIRE)
                 && !state.is(Blocks.SOUL_CAMPFIRE) && !state.is(Blocks.CACTUS) && !state.is(Blocks.SWEET_BERRY_BUSH);
+    }
+
+    private boolean inWater(Vec3 feet) {
+        return level.getFluidState(new BlockPos(Mth.floor(feet.x), Mth.floor(feet.y + 0.02), Mth.floor(feet.z)))
+                .is(FluidTags.WATER);
+    }
+
+    private double waterSurfaceY(Vec3 feet) {
+        int x = Mth.floor(feet.x), y = Mth.floor(feet.y + 0.02), z = Mth.floor(feet.z);
+        var pos = new BlockPos(x, y, z);
+        var fluid = level.getFluidState(pos);
+        if (!fluid.is(FluidTags.WATER)) return Double.NaN;
+        for (int step = 0; step < 3; step++) {
+            var above = pos.above();
+            var aboveFluid = level.getFluidState(above);
+            if (!aboveFluid.is(FluidTags.WATER)) break;
+            pos = above;
+            fluid = aboveFluid;
+        }
+        return pos.getY() + fluid.getHeight(level, pos);
+    }
+
+    private double waterDepthAt(Vec3 feet, double surface) {
+        int x = Mth.floor(feet.x), y = Mth.floor(surface - 0.01), z = Mth.floor(feet.z);
+        var below = new BlockPos(x, y - 1, z);
+        if (level.getFluidState(below).is(FluidTags.WATER)) return 2.0;
+        AABB probe = footprint.move(feet.x, y, feet.z);
+        double floorY = y;
+        for (var shape : level.getBlockCollisions(mover, new AABB(probe.minX, y, probe.minZ, probe.maxX, surface, probe.maxZ))) {
+            for (AABB box : shape.toAabbs()) {
+                if (box.maxY <= surface && box.maxY > floorY) floorY = box.maxY;
+            }
+        }
+        return surface - floorY;
     }
 
     private boolean clear(AABB box) {
@@ -278,7 +451,41 @@ final class WalkingRoute {
         return NavigationCollision.loaded(level, box);
     }
 
-    void refreshFooting() { safe.clear(); }
+    /**
+     * Only treat an unloaded neighbor as a chunk-streaming blocker when it actually advances toward
+     * the destination and the loaded side leading into that chunk edge is not sealed by solid blocks.
+     */
+    private boolean isRelevantUnloadedStep(Vec3 from, double x, double z, boolean atStart) {
+        AABB at = footprint.move(x, from.y, z);
+        AABB probe = new AABB(at.minX, from.y - DROP - EPSILON, at.minZ, at.maxX, from.y + riseLimit + EPSILON, at.maxZ);
+        if (NavigationCollision.loaded(level, probe)) return false;
+        double fromDist = Math.hypot(goal.x - from.x, goal.z - from.z);
+        double nextDist = Math.hypot(goal.x - x, goal.z - z);
+        if (atStart ? nextDist > fromDist + 0.5 : nextDist >= fromDist - 0.05) return false;
+        return canReachLoadedBoundary(from, x, z);
+    }
+
+    private boolean canReachLoadedBoundary(Vec3 from, double x, double z) {
+        double[] fractions = {0.45, 0.25};
+        for (double t : fractions) {
+            double mx = Mth.lerp(t, from.x, x);
+            double mz = Mth.lerp(t, from.z, z);
+            Vec3 flatMid = new Vec3(mx, from.y, mz);
+            if (!NavigationCollision.loaded(level, footprint.move(flatMid))) continue;
+            if (NavigationCollision.clear(level, mover, footprint, from, flatMid)) return true;
+            Vec3 highFrom = new Vec3(from.x, from.y + riseLimit, from.z);
+            Vec3 highMid = new Vec3(mx, from.y + riseLimit, mz);
+            if (NavigationCollision.loaded(level, footprint.move(highMid))
+                    && clear(footprint.move(from).minmax(footprint.move(highFrom)))
+                    && NavigationCollision.clear(level, mover, footprint, highFrom, highMid)) {
+                return true;
+            }
+            return false;
+        }
+        return true;
+    }
+
+    void refreshFooting() { safe.clear(); landingCache.clear(); }
 
     private static double distance(Vec3 from, Vec3 to) {
         return Math.hypot(horizontal(from, to), from.y - to.y);

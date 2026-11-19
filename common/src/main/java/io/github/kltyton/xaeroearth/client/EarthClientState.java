@@ -1,6 +1,11 @@
 package io.github.kltyton.xaeroearth.client;
 
 import io.github.kltyton.xaeroearth.client.bridge.XaeroMapBridge;
+import io.github.kltyton.xaeroearth.client.bridge.CaveModelCeiling;
+import io.github.kltyton.xaeroearth.client.bridge.WorldSavePrefetch;
+import io.github.kltyton.xaeroearth.client.integration.waystones.WaystonesOverlay;
+import io.github.kltyton.xaeroearth.client.integration.ftb.FtbClaimsOverlay;
+import io.github.kltyton.xaeroearth.client.integration.create.CreateStructures;
 import io.github.kltyton.xaeroearth.client.ui.NativeMapSkin;
 import io.github.kltyton.xaeroearth.client.ui.NativeMapInput;
 import io.github.kltyton.xaeroearth.client.ui.NativeMapTerrain;
@@ -13,16 +18,23 @@ import io.github.kltyton.xaeroearth.client.render.navigation.NavigationRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.server.level.ServerLevel;
 import xaero.map.gui.GuiMap;
 
 abstract class EarthClientState {
     protected static XaeroMapBridge bridge;
+    private static final WorldSavePrefetch worldSavePrefetch = new WorldSavePrefetch();
+    private static final CaveModelCeiling caveModelCeiling = new CaveModelCeiling();
+    private record ServerChunkChange(ServerLevel level, int x, int z) { }
+    private static final java.util.Set<ServerChunkChange> integratedChanges =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
     protected static Object level;
     protected static GuiMap themedMap;
     protected static ActiveMapResources resources;
     protected static NativeTileSession models;
     protected static String modelWorld, modelDimension, modelMultiworld;
-    protected static final int MODEL_THREADS = net.minecraft.util.Mth.clamp(Runtime.getRuntime().availableProcessors() / 2, 2, 4);
+    protected static final int MODEL_THREADS = net.minecraft.util.Mth.clamp(
+            (Runtime.getRuntime().availableProcessors() - 2) / 2, 2, 12);
     protected static final java.util.Set<Screen> themedScreens = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
 
     @FunctionalInterface
@@ -45,6 +57,7 @@ abstract class EarthClientState {
     }
 
     protected static void reloadResources(net.minecraft.server.packs.resources.ResourceManager manager) {
+        CreateStructures.reset();
         NavigationRenderer.close();
         NativeMapSkin.close(); NativeMapTerrain.hide();
         NativeMinimapTerrain.close();
@@ -57,9 +70,15 @@ abstract class EarthClientState {
     }
 
     protected static void tick(boolean releaseOnWorldChange) {
+        NativeMapInput.flushOrientation();
+        io.github.kltyton.xaeroearth.client.ui.minimap.MinimapFraming.flush();
         Minecraft minecraft = Minecraft.getInstance();
         PlayerNavigation.tick(ClientScreen.screen(minecraft) != null);
         if (level != minecraft.level) {
+            worldSavePrefetch.reset();
+            WaystonesOverlay.reset();
+            FtbClaimsOverlay.reset();
+            CreateStructures.reset();
             level = minecraft.level;
             if (releaseOnWorldChange) NativeMapSkin.close(); else NativeMapSkin.suspend();
             themedScreens.clear();
@@ -69,6 +88,12 @@ abstract class EarthClientState {
             if (bridge != null) { bridge.close(); bridge = null; }
         }
         if (!EarthPreferences.ENABLED.get() || !EarthPreferences.MINIMAP_3D.get()) NativeMinimapTerrain.close();
+        if (EarthPreferences.ENABLED.get()) worldSavePrefetch.tick(minecraft);
+        else worldSavePrefetch.reset();
+        if (EarthPreferences.ENABLED.get()) WaystonesOverlay.tick(minecraft);
+        else WaystonesOverlay.reset();
+        if (EarthPreferences.ENABLED.get()) FtbClaimsOverlay.tick(minecraft);
+        else FtbClaimsOverlay.reset();
         if (minecraft.level != null && EarthPreferences.ENABLED.get() && bridge == null) bridge = new XaeroMapBridge();
         if (minecraft.level == null || !EarthPreferences.ENABLED.get()) {
             NativeMapTerrain.hide();
@@ -79,6 +104,9 @@ abstract class EarthClientState {
         if (minecraft.level != null && resources == null && EarthPreferences.ENABLED.get()) {
             warmResources(minecraft.getResourceManager());
         }
+        if (EarthPreferences.ENABLED.get()) CreateStructures.tick(minecraft, resources);
+        else CreateStructures.reset();
+        drainIntegratedChanges(minecraft);
         if (minecraft.level != null && resources != null && EarthPreferences.ENABLED.get()) {
             var session = xaero.map.WorldMapSession.getCurrentSession();
             var processor = session == null ? null : session.getMapProcessor();
@@ -104,7 +132,7 @@ abstract class EarthClientState {
                 if (ClientScreen.screen(minecraft) instanceof GuiMap activeMap) io.github.kltyton.xaeroearth.client.ui.NativeMapInput.tick(activeMap);
                 double x = minecraft.player.getX(), z = minecraft.player.getZ();
                 double radius = 0, pixelsPerBlock = 1;
-                int ceiling = modelCeiling(processor);
+                int ceiling = caveModelCeiling.resolve(processor);
                 if (ClientScreen.screen(minecraft) instanceof GuiMap map && map.getMapProcessor() == processor) {
                     var access = (io.github.kltyton.xaeroearth.client.mixin.GuiMapAccess) map;
                     x = access.earth$cameraX(); z = access.earth$cameraZ();
@@ -130,7 +158,13 @@ abstract class EarthClientState {
         }
     }
 
-    protected static boolean themedScreen(Screen screen) { return EarthPreferences.ENABLED.get() && themedScreens.contains(screen); }
+    protected static boolean themedScreen(Screen screen) {
+        if (!EarthPreferences.ENABLED.get()) return false;
+        if (themedScreens.contains(screen)) return true;
+        if (!(screen instanceof xaero.lib.client.gui.GuiSettings)) return false;
+        String owner = screen.getClass().getPackageName();
+        return owner.equals("xaero.common.gui") || owner.equals("xaero.map.gui");
+    }
 
     public static boolean themed(GuiMap map) { return EarthPreferences.ENABLED.get() && ClientScreen.screen(Minecraft.getInstance()) == map; }
 
@@ -141,28 +175,39 @@ abstract class EarthClientState {
     public static NativeTileSession modelsFor(xaero.map.MapProcessor processor) {
         return models != null && processor.isMapWorldUsable() && processor.getWorld() == Minecraft.getInstance().level
                 && !processor.isConsideringNetherFairPlay() && processor.isCurrentMultiworldWritable()
-                && models.usesCeiling(modelCeiling(processor))
                 && java.util.Objects.equals(modelWorld, processor.getCurrentWorldId())
                 && java.util.Objects.equals(modelDimension, processor.getCurrentDimId())
-                && java.util.Objects.equals(modelMultiworld, processor.getCurrentMWId()) ? models : null;
-    }
-
-    private static int modelCeiling(xaero.map.MapProcessor processor) {
-        int layer = processor.getCurrentCaveLayer();
-        if (layer == Integer.MAX_VALUE) return Integer.MAX_VALUE;
-        int ceiling = processor.getMapWorld().getCurrentDimension().getLayeredMapRegions().getLayer(layer).getCaveStart();
-        return ceiling == Integer.MIN_VALUE || ceiling == Integer.MAX_VALUE ? ceiling : ceiling + 1;
+                && java.util.Objects.equals(modelMultiworld, processor.getCurrentMWId())
+                && models.usesCeiling(caveModelCeiling.resolve(processor)) ? models : null;
     }
 
     public static void changedChunk(net.minecraft.world.level.LevelAccessor changed, int x, int z) {
-        if (models != null && changed instanceof net.minecraft.client.multiplayer.ClientLevel
-                && changed == Minecraft.getInstance().level) models.invalidate(x, z);
+        var client = Minecraft.getInstance();
+        if (changed instanceof ServerLevel server) {
+            if (EarthPreferences.ENABLED.get() && server.getServer() == client.getSingleplayerServer())
+                integratedChanges.add(new ServerChunkChange(server, x, z));
+        } else if (models != null && changed == client.level) models.invalidate(x, z);
     }
 
-    protected static void closeModels() { if (models != null) { models.close(); models = null; } }
+    private static void drainIntegratedChanges(Minecraft client) {
+        var server = client.getSingleplayerServer();
+        var current = client.level;
+        for (var change : integratedChanges) {
+            if (!integratedChanges.remove(change)) continue;
+            if (models != null && current != null && server == change.level().getServer()
+                    && current.dimension().equals(change.level().dimension()))
+                models.invalidate(change.x(), change.z());
+        }
+    }
+
+    protected static void closeModels() {
+        caveModelCeiling.reset();
+        if (models != null) { models.close(); models = null; }
+    }
 
     public static void beginFrame(GuiMap map) {
         if (!themed(map)) return;
+        NativeMapTerrain.beginWorldBackground(map);
         themedMap = map; NativeMapSkin.beginFrame(map);
     }
 
@@ -199,6 +244,9 @@ abstract class EarthClientState {
     }
 
     protected static void stop() {
+        io.github.kltyton.xaeroearth.client.ui.minimap.MinimapFraming.flush(true);
+        CreateStructures.reset();
+        io.github.kltyton.xaeroearth.client.mapmark.MapAnnotations.stop();
         PlayerNavigation.cancel();
         NavigationRenderer.close();
         NativeMapSkin.close(); NativeMapTerrain.hide();

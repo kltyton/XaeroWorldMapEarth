@@ -242,7 +242,7 @@ public final class ProceduralPreview implements AutoCloseable {
         return new NativeTerrainScene.Surface(snapshot.originX() * (long) snapshot.step(),
                 snapshot.originZ() * (long) snapshot.step(), snapshot.width(), snapshot.depth(), snapshot.step(),
                 rgba, heights, SurfacePatches.build(snapshot.width(), snapshot.depth(), snapshot.step(), heights, sourceSteps),
-                new int[0], new int[0], snapshot.minY() * snapshot.verticalStep(), revision);
+                new int[0], new int[0], new byte[0], snapshot.minY() * snapshot.verticalStep(), revision);
     }
 
     private String resourceFingerprint(Map<String, Resource> resources) {

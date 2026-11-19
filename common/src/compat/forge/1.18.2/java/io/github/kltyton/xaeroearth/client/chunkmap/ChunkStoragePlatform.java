@@ -112,29 +112,32 @@ final class ChunkStoragePlatform extends StoredChunkSource<ChunkStoragePlatform.
 
     private ChunkCopy decode(StoredContext context, Optional<CompoundTag> tag, int floor, int ceiling) {
         if (closed.get() || tag.isEmpty()) return null;
-        CompoundTag upgraded = tag.get().copy();
-        ChunkStorage.injectDatafixingContext(upgraded, context.dimension, context.generatorType);
-        upgraded = (CompoundTag) context.dataFixer.update(DataFixTypes.CHUNK.getType(),
-                new Dynamic<>(NbtOps.INSTANCE, upgraded), ChunkStorage.getVersion(upgraded),
-                SharedConstants.getCurrentVersion().getDataVersion().getVersion()).getValue();
+        CompoundTag upgraded = tag.get();
+        int targetVersion = SharedConstants.getCurrentVersion().getDataVersion().getVersion();
+        if (ChunkStorage.getVersion(upgraded) != targetVersion) {
+            upgraded = upgraded.copy();
+            ChunkStorage.injectDatafixingContext(upgraded, context.dimension, context.generatorType);
+            upgraded = (CompoundTag) context.dataFixer.update(DataFixTypes.CHUNK.getType(),
+                    new Dynamic<>(NbtOps.INSTANCE, upgraded), ChunkStorage.getVersion(upgraded), targetVersion).getValue();
+        }
         if (!Optional.ofNullable(ChunkStatus.byName(upgraded.getString("Status")))
                 .filter(status -> status.isOrAfter(ChunkStatus.FULL)).isPresent()) return null;
         var biomeCodec = PalettedContainer.codec(context.biomes.asHolderIdMap(),
                 context.biomes.holderByNameCodec(), PalettedContainer.Strategy.SECTION_BIOMES, context.biomes.getHolderOrThrow(Biomes.PLAINS));
         var range = storedSectionRange(context.height.getMinSection(), context.height.getSectionsCount(), floor, ceiling,
                 upgraded.getCompound("Heightmaps").getLongArray("WORLD_SURFACE"));
-        if (range.low() > range.high()) return null;
         var sectionTags = upgraded.getList("sections", Tag.TAG_COMPOUND);
         return decodeSections(sectionTags.size(), sectionTags::getCompound, section -> section.getByte("Y"),
-                context.height.getSectionsCount(), context.height.getMinSection(), range, section -> {
-                    PalettedContainer<BlockState> states = section.contains("block_states", Tag.TAG_COMPOUND)
-                            ? decodePalette(BLOCK_STATES, context.registryOps, section.getCompound("block_states"))
-                            : new PalettedContainer<>(Block.BLOCK_STATE_REGISTRY, Blocks.AIR.defaultBlockState(),
-                                    PalettedContainer.Strategy.SECTION_STATES);
+                context.height.getSectionsCount(), context.height.getMinSection(), range, (section, biomeOnly) -> {
                     PalettedContainer<Holder<Biome>> biomes = section.contains("biomes", Tag.TAG_COMPOUND)
                             ? decodePalette(biomeCodec, context.registryOps, section.getCompound("biomes"))
                             : new PalettedContainer<>(context.biomes.asHolderIdMap(), context.biomes.getHolderOrThrow(Biomes.PLAINS),
                                     PalettedContainer.Strategy.SECTION_BIOMES);
+                    if (biomeOnly) return NativeChunkSource.copyBiomes(biomes::get);
+                    PalettedContainer<BlockState> states = section.contains("block_states", Tag.TAG_COMPOUND)
+                            ? decodePalette(BLOCK_STATES, context.registryOps, section.getCompound("block_states"))
+                            : new PalettedContainer<>(Block.BLOCK_STATE_REGISTRY, Blocks.AIR.defaultBlockState(),
+                                    PalettedContainer.Strategy.SECTION_STATES);
                     return new SectionCopy(states, biomes);
                 });
     }
@@ -156,12 +159,13 @@ final class ChunkStoragePlatform extends StoredChunkSource<ChunkStoragePlatform.
 
     private static ChunkCopy copy(LevelChunk chunk, Registry<Biome> biomes, int floor, int ceiling) {
         LevelChunkSection[] source = chunk.getSections();
-        SectionCopy[] sections = new SectionCopy[source.length];
+        NativeChunkSource.Section[] sections = new NativeChunkSource.Section[source.length];
         int minimum = chunk.getMinSection();
         var range = liveSectionRange(chunk, minimum, source.length, floor, ceiling);
-        for (int y = range.low(); y <= range.high(); y++) {
+        for (int y = minimum; y < minimum + source.length; y++) {
             int i = y - minimum;
             LevelChunkSection section = source[i];
+            if (!range.contains(y)) { sections[i] = NativeChunkSource.copyBiomes(section::getNoiseBiome); continue; }
             sections[i] = new SectionCopy(section.getStates().copy(),
                     copyBiomes(section.getBiomes(), biomes));
         }

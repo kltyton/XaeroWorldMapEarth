@@ -1,15 +1,16 @@
 package io.github.kltyton.xaeroearth.client.chunkmap;
 
 import it.unimi.dsi.fastutil.ints.IntArrayList;
+import java.util.BitSet;
 
 /** Combines planar cells in coarse terrain without changing the heightfield at their borders. */
 public final class SurfacePatches {
     public static int[] build(int width, int depth, int step, int[] heights, byte[] sourceSteps) {
         var patches = new IntArrayList();
-        var occupied = new boolean[width * depth];
+        var occupied = new BitSet(width * depth);
         for (int z = 0; z < depth; z++) for (int x = 0; x < width; x++) {
             int root = z * width + x;
-            if (occupied[root] || sourceSteps[root] == 0) continue;
+            if (occupied.get(root) || sourceSteps[root] == 0) continue;
             int span = 1;
             if (sourceSteps[root] > 1) {
                 for (int size = 2; size <= 16 && x % size == 0 && z % size == 0; size *= 2) {
@@ -18,7 +19,7 @@ public final class SurfacePatches {
                 }
             }
             for (int dz = 0; dz < span; dz++)
-                java.util.Arrays.fill(occupied, root + dz * width, root + dz * width + span, true);
+                occupied.set(root + dz * width, root + dz * width + span);
             // The highest texel index is 1024 * 1024 - 1. Four bits still fit exactly in an R32F texel.
             patches.add((root << 4) | Integer.numberOfTrailingZeros(span));
         }
@@ -35,7 +36,8 @@ public final class SurfacePatches {
         for (int row = -1; row <= size; row++) for (int col = -1; col <= size; col++) {
             int sample = start + row * width + col;
             if (sourceSteps[sample] == 0 || heights[sample] != height + dx * col + dz * row) return false;
-            if (col >= 0 && row >= 0 && col < size && row < size && sourceSteps[sample] < Math.max(2, step))
+            if (col >= 0 && row >= 0 && col < size && row < size
+                    && sourceSteps[sample] < Math.min(127, Math.max(2, step)))
                 return false;
         }
         return true;

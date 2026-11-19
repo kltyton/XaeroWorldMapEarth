@@ -9,6 +9,7 @@ import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import io.github.kltyton.xaeroearth.client.chunkmap.MapCamera;
+import io.github.kltyton.xaeroearth.client.integration.create.ContraptionBlockRender;
 import io.github.kltyton.kltytonui.render.OutputTargets;
 import java.util.Collection;
 import net.minecraft.client.Minecraft;
@@ -53,7 +54,11 @@ public final class MapEntityLayer {
     }
 
     public static void drawModels(MapCamera camera, Collection<EntityPreview.Model> models, RenderTarget target) {
-        drawPass(camera, models, target, false);
+        drawPass(camera, models, target, false, java.util.List.of());
+    }
+
+    public static void drawContraptionBlocks(MapCamera camera, RenderTarget target, Collection<ContraptionBlockRender> blocks) {
+        drawPass(camera, java.util.List.of(), target, false, blocks);
     }
 
     public static void drawIndicators(MapCamera camera, Collection<EntityPreview.Model> models, RenderTarget target) {
@@ -71,12 +76,12 @@ public final class MapEntityLayer {
             indicatorColorView = RenderSystem.getDevice().createTextureView(target.getColorTexture());
         }
         RenderSystem.getDevice().createCommandEncoder().clearDepthTexture(indicatorDepth, 1);
-        drawPass(camera, models, target, true);
+        drawPass(camera, models, target, true, java.util.List.of());
     }
 
     private static void drawPass(MapCamera camera, Collection<EntityPreview.Model> models, RenderTarget target,
-                                 boolean indicatorsOnly) {
-        if (models.isEmpty()) return;
+                                 boolean indicatorsOnly, Collection<ContraptionBlockRender> blocks) {
+        if (models.isEmpty() && blocks.isEmpty()) return;
         Minecraft minecraft = Minecraft.getInstance();
         var previousProjection = RenderSystem.getProjectionMatrixBuffer();
         var previousProjectionType = RenderSystem.getProjectionType();
@@ -92,7 +97,7 @@ public final class MapEntityLayer {
             if (fog == null) fog = new FogRenderer();
             Matrix4f view = camera.viewMatrix();
             boolean zeroToOne = RenderSystem.getDevice().isZZeroToOne();
-            Matrix4f projection = camera.nativeProjectionMatrix(zeroToOne);
+            Matrix4f projection = camera.nativeForwardProjectionMatrix(zeroToOne);
             RenderSystem.setProjectionMatrix(projectionBuffer.getBuffer(projection),
                     camera.mode().equals("street") ? ProjectionType.PERSPECTIVE : ProjectionType.ORTHOGRAPHIC);
             modelView.identity();
@@ -116,6 +121,21 @@ public final class MapEntityLayer {
             var nodes = minecraft.gameRenderer.getSubmitNodeStorage();
             var bufferSource = minecraft.renderBuffers().bufferSource();
             var dispatcher = minecraft.getEntityRenderDispatcher();
+            for (var block : blocks) {
+                var renderer = minecraft.getBlockEntityRenderDispatcher().getRenderer(block.entity());
+                if (renderer == null) continue;
+                PoseStack pose = new PoseStack();
+                pose.mulPose(view);
+                var origin = block.origin();
+                pose.translate(origin.x - camera.x(), origin.y - camera.y(), origin.z - camera.z());
+                pose.mulPose(block.rotation());
+                var pos = block.entity().getBlockPos();
+                pose.translate(pos.getX(), pos.getY(), pos.getZ());
+                var state = renderer.createRenderState();
+                renderer.extractRenderState(block.entity(), state, block.tick(), block.localEye(cameraState.pos), null);
+                state.lightCoords = block.packedLight(minecraft.level);
+                renderer.submit(state, pose, nodes, cameraState);
+            }
             for (EntityPreview.Model model : models) {
                 if (!visible(camera, model)) continue;
                 if (EntityMapGeometry.containsEye(camera, cameraState.pos.x, cameraState.pos.y, cameraState.pos.z, model.x(), model.y(), model.z(), model.state().boundingBoxWidth, model.state().boundingBoxHeight)) continue;

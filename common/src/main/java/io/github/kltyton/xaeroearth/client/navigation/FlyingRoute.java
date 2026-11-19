@@ -14,7 +14,6 @@ import net.minecraft.world.phys.Vec3;
 
 /** Incremental 3D search with continuous collision checks between waypoints. */
 final class FlyingRoute {
-    private static final int GRID = 3;
     private static final double LEG = 48;
     private static final double SWEEP = 18;
     private static final int MAX_NODES = 1800;
@@ -30,6 +29,8 @@ final class FlyingRoute {
     private final ClientLevel world;
     private final Entity mover;
     private final AABB hull;
+    private final int grid;
+    private final boolean water;
     private final Vec3 origin, destination, goal;
     private final PriorityQueue<Node> open = new PriorityQueue<>();
     private final Map<BlockPos, Double> costs = new HashMap<>();
@@ -37,8 +38,14 @@ final class FlyingRoute {
     private int expanded;
 
     FlyingRoute(ClientLevel world, Entity mover, Vec3 origin, Vec3 destination) {
+        this(world, mover, origin, destination, false);
+    }
+
+    FlyingRoute(ClientLevel world, Entity mover, Vec3 origin, Vec3 destination, boolean water) {
         this.world = world;
         this.mover = mover;
+        this.water = water;
+        this.grid = water ? 1 : 3;
         this.origin = origin;
         this.destination = destination;
         hull = mover.getBoundingBox().deflate(0.002).inflate(0.10, 0, 0.10)
@@ -66,8 +73,8 @@ final class FlyingRoute {
             for (int dy = -1; dy <= 1; dy++) for (int dz = -1; dz <= 1; dz++) for (int dx = -1; dx <= 1; dx++) {
                 if (dx == 0 && dy == 0 && dz == 0) continue;
                 BlockPos cell = here.cell.offset(dx, dy, dz);
-                Vec3 point = origin.add(cell.getX() * GRID, cell.getY() * GRID, cell.getZ() * GRID);
-                if (point.distanceToSqr(origin) > (LEG + GRID) * (LEG + GRID)) continue;
+                Vec3 point = origin.add(cell.getX() * grid, cell.getY() * grid, cell.getZ() * grid);
+                if (point.distanceToSqr(origin) > (LEG + grid) * (LEG + grid)) continue;
                 double traveled = here.traveled + point.distanceTo(here.point) + Math.abs(dy) * 0.12;
                 if (traveled >= costs.getOrDefault(cell, Double.POSITIVE_INFINITY) || !clear(here.point, point)) continue;
                 costs.put(cell, traveled);
@@ -98,6 +105,14 @@ final class FlyingRoute {
     }
 
     boolean clear(Vec3 from, Vec3 to) {
-        return NavigationCollision.clear(world, mover, hull, from, to);
+        if (!NavigationCollision.clear(world, mover, hull, from, to)) return false;
+        if (!water) return true;
+        // Check the same continuous corridor for the medium as well as for obstacles.
+        int checks = Math.max(1, (int) Math.ceil(from.distanceTo(to) * 3));
+        for (int i = 0; i <= checks; i++) {
+            var sample = from.lerp(to, i / (double) checks);
+            if (!SwimmingNavigation.waterAt(world, sample.add(0, 0.02, 0))) return false;
+        }
+        return true;
     }
 }

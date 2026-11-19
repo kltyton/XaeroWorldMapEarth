@@ -34,7 +34,7 @@ final class MapResourcePlatform {
         Map<String, SpriteLayout> sprites = new TreeMap<>();
         Minecraft.getInstance().getAtlasManager().getAtlasOrThrow(AtlasIds.BLOCKS).getTextures()
                 .forEach((id, sprite) -> sprites.put(id.toString(), new SpriteLayout(sprite.getX(), sprite.getY(),
-                        sprite.getU0(), sprite.getU1(), sprite.getV0(), sprite.getV1())));
+                        sprite.getU0(), sprite.getU1(), sprite.getV0(), sprite.getV1(), sprite.contents().getUniqueFrames().size() > 1)));
         return sprites;
     }
 

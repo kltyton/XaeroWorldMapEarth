@@ -5,6 +5,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
 import io.github.kltyton.xaeroearth.client.chunkmap.MapCamera;
+import io.github.kltyton.xaeroearth.client.integration.create.ContraptionBlockRender;
 import io.github.kltyton.kltytonui.chunkmap.KuiMapRenderState;
 import io.github.kltyton.kltytonui.chunkmap.KuiMapDepthTarget;
 import io.github.kltyton.kltytonui.forge.RenderService;
@@ -60,17 +61,21 @@ public final class MapEntityLayer {
 
     public static void drawModels(MapCamera camera, Collection<EntityPreview.Model> models, RenderTarget target,
                                   KuiMapDepthTarget depth) {
-        drawPass(camera, models, target, depth, false);
+        drawPass(camera, models, target, depth, false, java.util.List.of());
+    }
+
+    public static void drawContraptionBlocks(MapCamera camera, RenderTarget target, KuiMapDepthTarget depth, Collection<ContraptionBlockRender> blocks) {
+        drawPass(camera, java.util.List.of(), target, depth, false, blocks);
     }
 
     public static void drawIndicators(MapCamera camera, Collection<EntityPreview.Model> models, RenderTarget target) {
         if (models.stream().noneMatch(model -> model.state() instanceof AbstractClientPlayer)) return;
-        drawPass(camera, models, target, indicatorDepth, true);
+        drawPass(camera, models, target, indicatorDepth, true, java.util.List.of());
     }
 
     private static void drawPass(MapCamera camera, Collection<EntityPreview.Model> models, RenderTarget target,
-                                 KuiMapDepthTarget depth, boolean indicatorsOnly) {
-        if (models.isEmpty()) return;
+                                 KuiMapDepthTarget depth, boolean indicatorsOnly, Collection<ContraptionBlockRender> blocks) {
+        if (models.isEmpty() && blocks.isEmpty()) return;
         Minecraft minecraft = Minecraft.getInstance();
         if (!minecraft.isSameThread()) throw new IllegalStateException("Draw map entities on the client thread");
         if (dispatcher == null) {
@@ -107,6 +112,19 @@ public final class MapEntityLayer {
                 GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
             }
             minecraft.gameRenderer.lightTexture().turnOnLightLayer();
+            for (var block : blocks) {
+                var renderer = minecraft.getBlockEntityRenderDispatcher().getRenderer(block.entity());
+                if (renderer == null) continue;
+                PoseStack pose = new PoseStack();
+                PoseMatrices.mulPoseMatrix(pose, view);
+                var origin = block.origin();
+                pose.translate(origin.x - camera.x(), origin.y - camera.y(), origin.z - camera.z());
+                PoseMatrices.mulPose(pose, block.rotation());
+                var pos = block.entity().getBlockPos();
+                pose.translate(pos.getX(), pos.getY(), pos.getZ());
+                renderer.render(block.entity(), block.tick(), pose, buffers, block.packedLight(minecraft.level),
+                        OverlayTexture.NO_OVERLAY);
+            }
             for (EntityPreview.Model model : models) {
                 if (!visible(camera, model)) continue;
                 double eyeX = camera.x() + eye.x, eyeY = camera.y() + eye.y, eyeZ = camera.z() + eye.z;

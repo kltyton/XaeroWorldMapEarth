@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.List;
 import io.github.kltyton.xaeroearth.client.chunkmap.MapCamera;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.ClipContext;
@@ -21,11 +22,18 @@ public final class NavigationTrace {
     private static final Mesh lead = new Mesh(), tail = new Mesh(), target = new Mesh();
     private static final double HEIGHT = 0.12;
     private static final double HALF_WIDTH = 0.20;
-    private static final AABB TRACE_CORE = new AABB(-0.02, HEIGHT + 0.035, -0.02, 0.02, HEIGHT + 0.06, 0.02);
+    private static final AABB TRACE_BODY = new AABB(-HALF_WIDTH, 0.04, -HALF_WIDTH,
+            HALF_WIDTH, HEIGHT * 2 + 0.04, HALF_WIDTH);
+    // Tight centerline probe for vertical step risers so a 1-block step face 0.05..0.18 blocks
+    // away does not reject a valid stair/ledge climb or drop and leave a gap in the guide line.
+    private static final AABB STEP_BODY = new AABB(-0.03, 0.04, -0.03, 0.03, HEIGHT * 2 + 0.04, 0.03);
     private static List<Vec3> cachedPoints;
     private static int cachedFirst;
+    private static double remainingLegs;
+    private static Vec3 destination;
     private static Vec3 leadAnchor;
     private static float leadLength;
+    private static long directSegments, bridgedSegments, fallbackSegments, droppedUnloaded;
 
     static void start(ClientLevel world, Entity entity, Vec3 destination) {
         level = world;
@@ -35,6 +43,7 @@ public final class NavigationTrace {
     }
 
     static void updateDestination(Vec3 destination) {
+        NavigationTrace.destination = destination;
         target.reset();
         destinationMarker(destination);
     }
@@ -44,8 +53,7 @@ public final class NavigationTrace {
         Vec3 firstPoint = points.get(first);
         if (cachedPoints != points || cachedFirst != first || leadAnchor == null
                 || leadAnchor != firstPoint && leadAnchor.subtract(start).dot(firstPoint.subtract(previous)) <= 0) {
-            cachedPoints = points;
-            cachedFirst = first;
+            rememberRoute(points, first);
             tail.reset();
             double legLength = WalkingRoute.horizontal(previous, firstPoint);
             double remaining = WalkingRoute.horizontal(start, firstPoint);
@@ -72,8 +80,7 @@ public final class NavigationTrace {
 
     static void airRoute(Vec3 start, List<Vec3> points, int first) {
         if (cachedPoints == points && cachedFirst == first) return;
-        cachedPoints = points;
-        cachedFirst = first;
+        rememberRoute(points, first);
         leadAnchor = null;
         lead.reset(); tail.reset();
         float along = 0;
@@ -87,6 +94,28 @@ public final class NavigationTrace {
             }
             start = point;
         }
+    }
+
+    private static void rememberRoute(List<Vec3> points, int first) {
+        if (cachedPoints == points && cachedFirst == first) return;
+        cachedPoints = points;
+        cachedFirst = first;
+        remainingLegs = 0;
+        for (int i = first + 1; i < points.size(); i++)
+            remainingLegs += points.get(i - 1).distanceTo(points.get(i));
+    }
+
+    static int remainingBlocks(Vec3 position) {
+        if (destination == null) return 0;
+        double distance = cachedPoints == null ? position.distanceTo(destination)
+                : position.distanceTo(cachedPoints.get(cachedFirst)) + remainingLegs
+                        + cachedPoints.get(cachedPoints.size() - 1).distanceTo(destination);
+        return (int) Math.ceil(distance);
+    }
+
+    public static String distanceLabel(ClientLevel world) {
+        return world == null || world != level || mover == null || destination == null ? null
+                : I18n.get("xaeroearth.navigation.distance_short", remainingBlocks(mover.position()));
     }
 
     private static void destinationMarker(Vec3 destination) {
@@ -111,8 +140,10 @@ public final class NavigationTrace {
     private static void segment(Mesh mesh, Vec3 from, Vec3 to, float begin, float end) {
         double length = WalkingRoute.horizontal(from, to);
         if (from.distanceToSqr(to) < 0.0001) return;
+        double dirX = length > 0.001 ? (to.x - from.x) / length : 1.0;
+        double dirZ = length > 0.001 ? (to.z - from.z) / length : 0.0;
         int segments = Math.max(2, (int) Math.ceil(length / 0.16));
-        double high = Math.max(from.y, to.y) + 0.25, low = Math.min(from.y, to.y) - 0.25;
+        double high = Math.max(from.y, to.y) + 0.55, low = Math.min(from.y, to.y) - 0.55;
         Vec3 previous = groundEndpoint(from);
         int lastSample = 0;
         for (int i = 1; i <= segments; i++) {
@@ -123,55 +154,81 @@ public final class NavigationTrace {
             // beam between known samples so a narrow gap cannot remove a walkable leg.
             float start = begin + (end - begin) * lastSample / segments;
             float finish = begin + (end - begin) * i / segments;
-            connectGround(mesh, previous, current, start, finish);
+            connectGround(mesh, previous, current, start, finish, dirX, dirZ);
             previous = current;
             lastSample = i;
         }
     }
 
     private static Vec3 groundEndpoint(Vec3 feet) {
-        double surface = snowSurface(feet, feet.y + 0.25, feet.y - 0.15, feet.y);
+        double surface = snowSurface(feet, feet.y + 0.45, feet.y - 0.25, feet.y);
         return new Vec3(feet.x, surface, feet.z);
     }
 
     private static Vec3 groundSample(Vec3 point, double high, double low) {
         var hit = level.clip(new ClipContext(new Vec3(point.x, high, point.z),
-                new Vec3(point.x, low, point.z), ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, mover));
+                new Vec3(point.x, low, point.z), ClipContext.Block.COLLIDER, ClipContext.Fluid.ANY, mover));
         if (hit.getType() != HitResult.Type.BLOCK || hit.getDirection() != Direction.UP) return null;
         return new Vec3(point.x, snowSurface(point, high, low, hit.getLocation().y), point.z);
     }
 
-    private static void connectGround(Mesh mesh, Vec3 from, Vec3 to, float begin, float end) {
+    private static void connectGround(Mesh mesh, Vec3 from, Vec3 to, float begin, float end, double dirX, double dirZ) {
         if (traceClear(from, to)) {
-            groundBeam(mesh, from, to, begin, end);
+            directSegments++;
+            groundBeam(mesh, from, to, begin, end, dirX, dirZ);
             return;
         }
         double height = Math.max(from.y, to.y);
-        if (!bridgeStep(mesh, from, to, height, begin, end))
-            bridgeStep(mesh, from, to, height + 0.25, begin, end);
+        if (bridgeStep(mesh, from, to, height, begin, end, dirX, dirZ, TRACE_BODY)
+                || bridgeStep(mesh, from, to, height, begin, end, dirX, dirZ, STEP_BODY)
+                || bridgeStep(mesh, from, to, height + 0.25, begin, end, dirX, dirZ, STEP_BODY)
+                || bridgeStep(mesh, from, to, height + 0.55, begin, end, dirX, dirZ, STEP_BODY)) {
+            bridgedSegments++;
+            return;
+        }
+        // Only suppress output in genuinely unloaded chunks. A loaded segment belongs to a
+        // WalkingRoute-verified walkable leg (real walls remain depth-occluded by GL_LEQUAL);
+        // never drop a verified grass-step, snow-layer, or diagonal corner to an empty gap.
+        AABB bounds = STEP_BODY.move(from).minmax(STEP_BODY.move(to));
+        if (!NavigationCollision.loaded(level, bounds)) {
+            droppedUnloaded++;
+            return;
+        }
+        fallbackSegments++;
+        emitStepBridge(mesh, from, to, height + 0.02, begin, end, dirX, dirZ);
     }
 
-    private static boolean bridgeStep(Mesh mesh, Vec3 from, Vec3 to, double height, float begin, float end) {
+    private static boolean bridgeStep(Mesh mesh, Vec3 from, Vec3 to, double height, float begin, float end,
+                                      double dirX, double dirZ, AABB probe) {
         Vec3 aboveFrom = new Vec3(from.x, height, from.z);
         Vec3 aboveTo = new Vec3(to.x, height, to.z);
-        if (!traceClear(from, aboveFrom) || !traceClear(aboveFrom, aboveTo) || !traceClear(aboveTo, to)) return false;
-        double rise = from.distanceTo(aboveFrom), span = aboveFrom.distanceTo(aboveTo), drop = aboveTo.distanceTo(to);
-        double total = rise + span + drop;
-        if (total < 0.0001) return true;
-        float raised = begin + (end - begin) * (float) (rise / total);
-        float lowered = end - (end - begin) * (float) (drop / total);
-        if (rise > 0) groundBeam(mesh, from, aboveFrom, begin, raised);
-        if (span > 0) groundBeam(mesh, aboveFrom, aboveTo, raised, lowered);
-        if (drop > 0) groundBeam(mesh, aboveTo, to, lowered, end);
+        if (!NavigationCollision.clear(level, mover, probe, from, aboveFrom)
+                || !NavigationCollision.clear(level, mover, probe, aboveFrom, aboveTo)
+                || !NavigationCollision.clear(level, mover, probe, aboveTo, to)) return false;
+        emitStepBridge(mesh, from, to, height, begin, end, dirX, dirZ);
         return true;
     }
 
-    private static boolean traceClear(Vec3 from, Vec3 to) {
-        return NavigationCollision.clear(level, mover, TRACE_CORE, from, to);
+    private static void emitStepBridge(Mesh mesh, Vec3 from, Vec3 to, double height, float begin, float end,
+                                       double dirX, double dirZ) {
+        Vec3 aboveFrom = new Vec3(from.x, height, from.z);
+        Vec3 aboveTo = new Vec3(to.x, height, to.z);
+        double rise = from.distanceTo(aboveFrom), span = aboveFrom.distanceTo(aboveTo), drop = aboveTo.distanceTo(to);
+        double total = rise + span + drop;
+        if (total < 0.0001) return;
+        float raised = begin + (end - begin) * (float) (rise / total);
+        float lowered = end - (end - begin) * (float) (drop / total);
+        if (rise > 0.0001) groundBeam(mesh, from, aboveFrom, begin, raised, dirX, dirZ);
+        if (span > 0.0001) groundBeam(mesh, aboveFrom, aboveTo, raised, lowered, dirX, dirZ);
+        if (drop > 0.0001) groundBeam(mesh, aboveTo, to, lowered, end, dirX, dirZ);
     }
 
-    private static void groundBeam(Mesh mesh, Vec3 from, Vec3 to, float begin, float end) {
-        beam(mesh, from.add(0, HEIGHT + 0.04, 0), to.add(0, HEIGHT + 0.04, 0), begin, end);
+    private static boolean traceClear(Vec3 from, Vec3 to) {
+        return NavigationCollision.clear(level, mover, TRACE_BODY, from, to);
+    }
+
+    private static void groundBeam(Mesh mesh, Vec3 from, Vec3 to, float begin, float end, double dirX, double dirZ) {
+        beam(mesh, from.add(0, HEIGHT + 0.04, 0), to.add(0, HEIGHT + 0.04, 0), begin, end, dirX, dirZ);
     }
 
     private static double snowSurface(Vec3 position, double top, double bottom, double ground) {
@@ -188,16 +245,30 @@ public final class NavigationTrace {
     private static void beam(Mesh mesh, Vec3 a, Vec3 b, float begin, float end) {
         double dx = b.x - a.x, dz = b.z - a.z;
         double length = Math.hypot(dx, dz);
-        double nx = length > 0.001 ? dz * HALF_WIDTH / length : HALF_WIDTH;
-        double nz = length > 0.001 ? -dx * HALF_WIDTH / length : 0;
+        double dirX = length > 0.001 ? dx / length : 1.0;
+        double dirZ = length > 0.001 ? dz / length : 0.0;
+        beam(mesh, a, b, begin, end, dirX, dirZ);
+    }
+
+    private static void beam(Mesh mesh, Vec3 a, Vec3 b, float begin, float end, double dirX, double dirZ) {
+        double dx = b.x - a.x, dz = b.z - a.z;
+        double length = Math.hypot(dx, dz);
+        double refX = length > 0.001 ? dx / length : dirX;
+        double refZ = length > 0.001 ? dz / length : dirZ;
+        double refLen = Math.hypot(refX, refZ);
+        double nx = refLen > 0.001 ? refZ * HALF_WIDTH / refLen : HALF_WIDTH;
+        double nz = refLen > 0.001 ? -refX * HALF_WIDTH / refLen : 0;
         mesh.quad(a.add(nx, 0, nz), a.add(-nx, 0, -nz),
                 b.add(-nx, 0, -nz), b.add(nx, 0, nz), begin, end, nx, nz);
         if (length > 0.001) {
             Vec3 cross = new Vec3(-nz, 0, nx).cross(b.subtract(a)).normalize().scale(HEIGHT);
             mesh.quad(a.add(cross), a.subtract(cross), b.subtract(cross), b.add(cross), begin, end);
         } else {
-            mesh.quad(a.add(0, 0, HEIGHT), a.add(0, 0, -HEIGHT),
-                    b.add(0, 0, -HEIGHT), b.add(0, 0, HEIGHT), begin, end);
+            // Vertical riser: orient the perpendicular ribbon along the travel direction instead of fixed Z.
+            double vx = refLen > 0.001 ? refX * HEIGHT / refLen : 0;
+            double vz = refLen > 0.001 ? refZ * HEIGHT / refLen : HEIGHT;
+            mesh.quad(a.add(vx, 0, vz), a.add(-vx, 0, -vz),
+                    b.add(-vx, 0, -vz), b.add(vx, 0, vz), begin, end);
         }
     }
 
@@ -215,7 +286,7 @@ public final class NavigationTrace {
         mesh.vertex(center.add(bx, 0, bz), along, 1, bx, bz);
     }
 
-    private static void clearRoute() {
+    static void clearRoute() {
         cachedPoints = null;
         leadAnchor = null;
         lead.reset();
@@ -225,8 +296,17 @@ public final class NavigationTrace {
     static void stop() {
         level = null;
         mover = null;
+        destination = null;
         clearRoute();
         target.reset();
+    }
+
+    public record Diagnostics(int leadVertices, int tailVertices, int targetVertices,
+                              long directSegments, long bridgedSegments, long fallbackSegments, long droppedUnloaded) { }
+
+    public static Diagnostics diagnostics() {
+        return new Diagnostics(lead.count, tail.count, target.count,
+                directSegments, bridgedSegments, fallbackSegments, droppedUnloaded);
     }
 
     public static int vertices(ClientLevel world) {

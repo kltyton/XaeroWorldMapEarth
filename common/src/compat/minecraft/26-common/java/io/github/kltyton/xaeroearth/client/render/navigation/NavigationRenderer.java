@@ -6,6 +6,7 @@ import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.systems.RenderSystem;
 import io.github.kltyton.xaeroearth.client.navigation.NavigationTrace;
 import io.github.kltyton.xaeroearth.client.chunkmap.MapCamera;
+import io.github.kltyton.xaeroearth.client.mapmark.MapMarkMesh;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import net.minecraft.client.Minecraft;
@@ -34,14 +35,27 @@ public final class NavigationRenderer {
 
     public static void drawMap(RenderTarget target, MapCamera camera) {
         if (NavigationTrace.vertices(Minecraft.getInstance().level) == 0) return;
+        projectedMap(camera, () -> drawTrace(target, camera.viewMatrix(), new Vec3(camera.x(), camera.y(), camera.z()),
+                NavigationTrace.mapWidth(camera, target.width)));
+    }
+
+    public static void drawMarks(RenderTarget target, MapCamera camera, MapMarkMesh marks) {
+        if (marks.count() == 0) return;
+        projectedMap(camera, () -> drawVertices(target, camera.viewMatrix(), marks.count(),
+                buffer -> marks.write(buffer, camera)));
+    }
+
+    private static void projectedMap(MapCamera camera, Runnable draw) {
         if (mapProjection == null) mapProjection = new ProjectionMatrixBuffer("Earth navigation map projection");
         var previousProjection = RenderSystem.getProjectionMatrixBuffer();
         var previousType = RenderSystem.getProjectionType();
-        RenderSystem.setProjectionMatrix(mapProjection.getBuffer(camera.nativeProjectionMatrix(NavigationRenderPlatform.zeroToOne())),
+        boolean zeroToOne = NavigationRenderPlatform.zeroToOne();
+        var projection = NavigationRenderPlatform.reverseDepth() ? camera.nativeProjectionMatrix(zeroToOne)
+                : camera.nativeForwardProjectionMatrix(zeroToOne);
+        RenderSystem.setProjectionMatrix(mapProjection.getBuffer(projection),
                 camera.mode().equals("street") ? ProjectionType.PERSPECTIVE : ProjectionType.ORTHOGRAPHIC);
         try {
-            drawTrace(target, camera.viewMatrix(), new Vec3(camera.x(), camera.y(), camera.z()),
-                    NavigationTrace.mapWidth(camera, target.width));
+            draw.run();
         } finally {
             RenderSystem.setProjectionMatrix(previousProjection, previousType);
         }
@@ -50,6 +64,10 @@ public final class NavigationRenderer {
     private static void drawTrace(RenderTarget target, Matrix4fc view, Vec3 camera, double width) {
         Minecraft minecraft = Minecraft.getInstance();
         int count = NavigationTrace.vertices(minecraft.level);
+        drawVertices(target, view, count, buffer -> NavigationTrace.write(buffer, camera, width));
+    }
+
+    private static void drawVertices(RenderTarget target, Matrix4fc view, int count, java.util.function.Consumer<ByteBuffer> write) {
         if (count == 0) return;
         int bytes = Math.multiplyExact(count, NavigationTrace.STRIDE);
         var device = RenderSystem.getDevice();
@@ -62,7 +80,7 @@ public final class NavigationRenderer {
             vertices = MemoryUtil.memAlloc(capacity).order(ByteOrder.nativeOrder());
         }
         vertices.clear();
-        NavigationTrace.write(vertices, camera, width);
+        write.accept(vertices);
         var encoder = device.createCommandEncoder();
         encoder.writeToBuffer(vertexBuffer.slice(0, bytes), vertices);
         if (parameters == null) parameters = new DynamicUniformStorage<>("Earth navigation uniforms", 16, 2);

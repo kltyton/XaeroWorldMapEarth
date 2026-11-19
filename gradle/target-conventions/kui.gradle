@@ -16,8 +16,19 @@ if (localJar) {
             version = mod?.id == 'kltytonui' ? mod.version : null
         } else {
             def metadata = loader == 'forge' ? 'META-INF/mods.toml' : 'META-INF/neoforge.mods.toml'
-            if (archive.getEntry(metadata) != null) {
+            def entry = archive.getEntry(metadata)
+            if (entry != null) {
                 version = archive.manifest?.mainAttributes?.getValue('Implementation-Version')
+                if (loader == 'neoforge') {
+                    def descriptor = archive.getInputStream(entry).withCloseable { it.getText('UTF-8') }
+                    def mod = descriptor.split(/(?m)(?=^[ \t]*\[)/).find { block ->
+                        block.trim().startsWith('[[mods]]') &&
+                                (block =~ /(?m)^\h*modId\h*=\h*"kltytonui"\h*$/).find()
+                    }
+                    def declared = (mod ?: '') =~ /(?m)^\h*version\h*=\h*"([^"]+)"\h*$/
+                    if (!declared.find()) version = null
+                    else if (declared.group(1) != '${file.jarVersion}') version = declared.group(1)
+                }
             }
         }
         if (version?.toString() != kui_version.toString()
@@ -30,7 +41,15 @@ if (localJar) {
 repositories {
     exclusiveContent {
         forRepository {
-            maven { url = 'https://maven.sighs.cc/repository/maven-public/' }
+            if (localJar) {
+                ivy {
+                    url = localJar.parentFile.toURI()
+                    patternLayout { artifact localJar.name }
+                    metadataSources { artifact() }
+                }
+            } else {
+                maven { url = 'https://maven.sighs.cc/repository/maven-public/' }
+            }
         }
         filter { includeModule('io.github.kltyton.kltytonui', moduleName) }
     }
@@ -38,22 +57,13 @@ repositories {
 
 if (loader == 'fabric') {
     def minecraftClasspath = minecraft_version.startsWith('26.') ? 'implementation' : 'modImplementation'
-    dependencies.add(minecraftClasspath, localJar ? files(localJar) : kui)
-    if (localJar) {
-        repositories { flatDir { dirs localJar.parentFile } }
-        dependencies.add('include', [group: 'local.kltytonui', name: localJar.name - '.jar', version: kui_version.toString()])
-    } else {
-        dependencies.add('include', kui)
-    }
+    dependencies.add(minecraftClasspath, kui)
+    dependencies.add('include', kui)
 } else {
-    dependencies.add(loader == 'forge' ? 'modImplementation' : 'implementation', localJar ? files(localJar) : kui)
-    if (localJar) {
-        dependencies.add('jarJar', files(localJar))
-    } else {
-        dependencies {
-            jarJar(kui) {
-                version { strictly "[${kui_version}]"; prefer kui_version.toString() }
-            }
+    dependencies.add(loader == 'forge' ? 'modImplementation' : 'implementation', kui)
+    dependencies {
+        jarJar(kui) {
+            version { strictly "[${kui_version}]"; prefer kui_version.toString() }
         }
     }
 }

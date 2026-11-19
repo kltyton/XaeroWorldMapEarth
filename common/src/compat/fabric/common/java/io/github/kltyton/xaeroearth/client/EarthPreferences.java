@@ -4,8 +4,10 @@ import io.github.kltyton.xaeroearth.client.ui.NativeMapInput;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -21,15 +23,19 @@ public final class EarthPreferences {
 
     public static final AtomicInteger ISOMETRIC_DETAIL_DISTANCE = new AtomicInteger(
             Math.max(64, Math.min(1536, Integer.parseInt(VALUES.getProperty("isometricDetailDistance", "512")))));
+    public static final AtomicBoolean FAST_TERRAIN = new AtomicBoolean(Boolean.parseBoolean(VALUES.getProperty("fastTerrain", "false")));
+    public static final AtomicBoolean SHADER_PACK = new AtomicBoolean(Boolean.parseBoolean(VALUES.getProperty("mapShaderPack", "false")));
+    public static final AtomicBoolean BACKGROUND_WORLD_SAVE = new AtomicBoolean(
+            Boolean.parseBoolean(VALUES.getProperty("backgroundWorldSave", "false")));
+    public static final AtomicBoolean UNEXPLORED_FOG = new AtomicBoolean(
+            Boolean.parseBoolean(VALUES.getProperty("unexploredFog", "true")));
 
     public static final AtomicBoolean MINIMAP_3D = new AtomicBoolean(Boolean.parseBoolean(VALUES.getProperty("minimap3d", "true")));
-    public static final AtomicReference<Double> MINIMAP_ZOOM_MULTIPLIER = new AtomicReference<>(
-            readDecimal("minimapZoomMultiplier", NativeMapInput.DEFAULT_MINIMAP_ZOOM_MULTIPLIER, 0.5, 3));
-    public static final AtomicBoolean MINIMAP_FOLLOW_WORLD_ZOOM = new AtomicBoolean(
-            Boolean.parseBoolean(VALUES.getProperty("minimapFollowWorldZoom", "false")));
+    public static final AtomicReference<Double> MINIMAP_ZOOM = new AtomicReference<>(readDecimal("minimapZoom", 1.0, 0.063, 50.0));
     public static final AtomicReference<Double> ISOMETRIC_YAW = new AtomicReference<>(readDecimal("isometricYaw", NativeMapInput.DEFAULT_ISOMETRIC_YAW, -180, 180));
     public static final AtomicReference<Double> ISOMETRIC_PITCH = new AtomicReference<>(
             readDecimal("isometricPitch", NativeMapInput.DEFAULT_ISOMETRIC_PITCH, 1, 90));
+    public static final AtomicReference<Double> TOP_YAW = new AtomicReference<>(readDecimal("topYaw", 0, -180, 180));
 
     private static double readDecimal(String key, double fallback, double min, double max) {
         try {
@@ -56,16 +62,27 @@ public final class EarthPreferences {
         VALUES.setProperty("modelIndicators", Boolean.toString(MODEL_INDICATORS.get()));
         VALUES.setProperty("view", VIEW.get().name());
         VALUES.setProperty("minimap3d", Boolean.toString(MINIMAP_3D.get()));
-        VALUES.setProperty("minimapZoomMultiplier", Double.toString(MINIMAP_ZOOM_MULTIPLIER.get()));
-        VALUES.setProperty("minimapFollowWorldZoom", Boolean.toString(MINIMAP_FOLLOW_WORLD_ZOOM.get()));
+        VALUES.setProperty("minimapZoom", Double.toString(MINIMAP_ZOOM.get()));
         VALUES.remove("freeYaw");
         VALUES.remove("freePitch");
         VALUES.setProperty("isometricYaw", Double.toString(ISOMETRIC_YAW.get()));
         VALUES.setProperty("isometricPitch", Double.toString(ISOMETRIC_PITCH.get()));
+        VALUES.setProperty("topYaw", Double.toString(TOP_YAW.get()));
         VALUES.setProperty("isometricDetailDistance", Integer.toString(ISOMETRIC_DETAIL_DISTANCE.get()));
+        VALUES.setProperty("fastTerrain", Boolean.toString(FAST_TERRAIN.get()));
+        VALUES.setProperty("mapShaderPack", Boolean.toString(SHADER_PACK.get()));
+        VALUES.setProperty("backgroundWorldSave", Boolean.toString(BACKGROUND_WORLD_SAVE.get()));
+        VALUES.setProperty("unexploredFog", Boolean.toString(UNEXPLORED_FOG.get()));
         try {
             Files.createDirectories(FILE.getParent());
-            try (var output = Files.newOutputStream(FILE)) { VALUES.store(output, "Xaero Earth client preferences"); }
+            var next = Files.createTempFile(FILE.getParent(), FILE.getFileName().toString(), ".tmp");
+            try {
+                try (var output = Files.newOutputStream(next)) { VALUES.store(output, "Xaero Earth client preferences"); }
+                try { Files.move(next, FILE, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); }
+                catch (AtomicMoveNotSupportedException unavailable) {
+                    Files.move(next, FILE, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } finally { Files.deleteIfExists(next); }
         } catch (IOException failure) { throw new UncheckedIOException("Cannot save " + FILE, failure); }
     }
 

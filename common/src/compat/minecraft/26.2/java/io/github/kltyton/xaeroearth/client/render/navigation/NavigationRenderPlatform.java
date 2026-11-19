@@ -57,6 +57,7 @@ final class NavigationRenderPlatform {
     }
 
     static boolean zeroToOne() { return RenderSystem.getDevice().getDeviceInfo().isZZeroToOne(); }
+    static boolean reverseDepth() { return true; }
 
     static void screenTriangle(RenderPass pass) { pass.draw(3, 1, 0, 0); }
 

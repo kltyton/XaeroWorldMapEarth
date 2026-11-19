@@ -17,7 +17,7 @@ public final class MapTerrainHit {
             begin = Math.max(begin, Math.min(a, b));
             end = Math.min(end, Math.max(a, b));
         }
-        var surface = bridge.surface();
+        var surface = scene.visibleSurface();
         while (begin <= end) {
             Vec3 entry = origin.add(direction.scale(begin + 1e-6));
             int bx = (int) Math.floor(entry.x), bz = (int) Math.floor(entry.z);
@@ -78,10 +78,29 @@ public final class MapTerrainHit {
             int sample = Math.max(0, Math.min(surface.depth() - 1, z + dz)) * surface.width()
                     + Math.max(0, Math.min(surface.width() - 1, x + dx));
             if (surface.rgba()[sample * 4 + 3] == 0) continue;
-            total += surface.heights()[sample] + 1;
+            total += surface.topHeight(sample);
             count++;
         }
         return total / count;
+    }
+
+    /** Top of the terrain currently rendered at this column, or NaN for unmapped columns. */
+    public static double surfaceY(XaeroMapBridge bridge, NativeTerrainScene scene, double x, double z) {
+        int bx = (int) Math.floor(x), bz = (int) Math.floor(z);
+        if (scene.hasDetailAt(bx, bz)) {
+            int top = bridge.heightAt(bx, bz, Integer.MIN_VALUE);
+            return top == Integer.MIN_VALUE ? Double.NaN : top + 1.0;
+        }
+        var surface = scene.visibleSurface();
+        if (surface == null) return Double.NaN;
+        double u = (x - surface.x()) / surface.step(), v = (z - surface.z()) / surface.step();
+        int cx = (int) Math.floor(u), cz = (int) Math.floor(v);
+        if (cx < 0 || cz < 0 || cx >= surface.width() || cz >= surface.depth()
+                || surface.rgba()[(cz * surface.width() + cx) * 4 + 3] == 0) return Double.NaN;
+        u -= cx; v -= cz;
+        double a = corner(surface, cx, cz), b = corner(surface, cx, cz + 1);
+        double c = corner(surface, cx + 1, cz + 1), d = corner(surface, cx + 1, cz);
+        return u <= v ? a + u * (c - b) + v * (b - a) : a + u * (d - a) + v * (c - d);
     }
 
     private MapTerrainHit() {}

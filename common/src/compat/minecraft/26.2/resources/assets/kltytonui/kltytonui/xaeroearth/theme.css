@@ -40,6 +40,18 @@ body,
     font-size: var(--xaero-font-size);
 }
 
+.xaeroearth-proxy.is-focused .mc-button {
+    outline: var(--xaero-pixel) solid var(--mc-focus, #fff);
+    outline-offset: calc(-2 * var(--xaero-pixel));
+}
+
+.xaeroearth-native-anchor {
+    display: block;
+    flex: none;
+    width: 1px;
+    height: 1px;
+}
+
 .xaeroearth-proxy .mc-button__content {
     min-width: 0;
     max-width: 100%;
@@ -56,7 +68,6 @@ body,
 .xaeroearth-dock .mc-panel__body { padding: 0; overflow: hidden; }
 
 .xaeroearth-proxy.is-slider {
-    padding: var(--xaero-pixel) var(--xaero-inset);
     background: var(--mc-surface);
     color: var(--mc-text);
 }

@@ -9,6 +9,7 @@
   "icon": "assets/xaeroearth/branding/icon.png",
   "license": "MIT",
   "environment": "client",
+  "accessWidener": "xaeroearth.accesswidener",
   "entrypoints": {
     "client": [
       "io.github.kltyton.xaeroearth.fabric.EarthClient"

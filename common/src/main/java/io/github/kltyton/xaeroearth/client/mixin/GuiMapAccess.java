@@ -34,6 +34,7 @@ public interface GuiMapAccess {
     @Accessor("rightClickY") int earth$rightClickY();
     @Accessor("rightClickZ") int earth$rightClickZ();
     @Accessor("rightClickDim") ResourceKey<Level> earth$rightClickDimension();
+    @Accessor("settingsButton") Button earth$settingsButton();
     @Accessor("caveModeOptions") xaero.map.gui.GuiCaveModeOptions earth$caveModeOptions();
     @Accessor("scale") double earth$scale();
     @Accessor("regionBuffer") ArrayList<MapRegion> earth$regions();

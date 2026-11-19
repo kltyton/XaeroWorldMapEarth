@@ -41,15 +41,23 @@ public final class NativeMapEntityIndicators {
         Frame<?> current = activeFrame();
         if (current == null || current.map != map || !loaded(current, actor)
                 || !WorldMap.INSTANCE.getConfigs().getClientConfigManager().getEffective(WorldMapProfiledConfigOptions.ARROW)) return false;
-        if (current.actorId != null && current.actorId.equals(actor.getUUID())) {
-            return MapEntityLayer.visible(NativeMapTerrain.camera(), current.models.get(current.actorId));
-        }
+        if (current.actorId != null && current.actorId.equals(actor.getUUID())) return true;
         var position = actor.getPosition(current.partialTicks);
         EntityPreview.Model model = capture(current, actor, position.x, position.y, position.z);
         if (model == null) return false;
         current.models.put(actor.getUUID(), model);
         current.actorId = actor.getUUID();
-        return MapEntityLayer.visible(NativeMapTerrain.camera(), model);
+        // The native near arrow uses Xaero's flat projection. Even when the model is
+        // outside the 3D frustum, retaining that arrow can place a red fragment over
+        // unrelated terrain; the 3D model is the authoritative in-map indicator.
+        return true;
+    }
+
+    /** Preserve Xaero's distant-player indication when the model is outside the 3D view. */
+    public static boolean replaceFarActor(GuiMap map, Entity actor) {
+        if (!replaceActor(map, actor)) return false;
+        Frame<?> current = activeFrame();
+        return current != null && MapEntityLayer.visible(NativeMapTerrain.camera(), current.models.get(current.actorId));
     }
 
     public static boolean replaceTracked(PlayerTrackerMapElement<?> marker, ElementRenderInfo info) {

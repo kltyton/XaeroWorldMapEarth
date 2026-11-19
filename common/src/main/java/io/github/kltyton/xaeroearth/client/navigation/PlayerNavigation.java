@@ -8,6 +8,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.PlayerRideableJumping;
@@ -26,23 +27,43 @@ public final class PlayerNavigation {
     private static List<Vec3> route = List.of();
     private static WalkingRoute search, continuation;
     private static FlightNavigation flight;
+    private static SwimmingNavigation swim;
+    private static int swimRetry, swimEnterWait;
     private static final List<WalkingRoute.Edge> blockedSteps = new ArrayList<>(4);
     private static Vec3 destination, previousStep;
     private static Vec3 detourOrigin;
-    private static boolean endsAtDestination;
+    private static boolean endsAtDestination, submergedDestination;
     private static int next, ticksWithoutProgress, replans;
+    private static int initialSearchDelay, initialChunkWait;
     private static int continuationDelay, continuationFailures, frontierWait;
     private static double bestDistance;
     private static float yawSpeed, priorYaw, nextYaw, priorPitch, nextPitch;
     private static boolean automatic, sprintRequested, sprintOwned, forward, jump, descend, airborne;
+    private static boolean strafeLeft, strafeRight;
     private static int rocketCooldown, hudCooldown;
     private static Vec3 previousAirPosition;
     private static double closestAirDistance;
     private static int mountJumpCooldown;
-    private static final int[] DIRECTION_KEYS = {GLFW.GLFW_KEY_W, GLFW.GLFW_KEY_A, GLFW.GLFW_KEY_S, GLFW.GLFW_KEY_D};
-    private static final boolean[] heldDirections = new boolean[DIRECTION_KEYS.length];
-    private static final long[] lastPress = new long[DIRECTION_KEYS.length];
+    public static final int FORWARD_KEY = 0, LEFT_KEY = 1, BACK_KEY = 2, RIGHT_KEY = 3;
+    private static final boolean[] heldDirections = new boolean[4];
+    private static final long[] lastPress = new long[4];
     private static int heldTicks;
+    private static String lastEndReason = "";
+    private static String lastControlReleaseReason = "NONE";
+    private static int continuationStitches;
+    private static boolean waitingForChunks;
+
+    public record Diagnostics(String endReason, String lastReleaseReason, double remainingConfirmed,
+                              boolean continuationActive, int continuationStitches, boolean waitingForChunks,
+                              int routeSteps, int nextStep, boolean endsAtDestination) { }
+
+    public static String lastEndReason() { return lastEndReason; }
+
+    public static Diagnostics diagnostics() {
+        double ahead = mover == null || route.isEmpty() ? 0.0 : remainingConfirmedDistance(mover.position());
+        return new Diagnostics(lastEndReason, lastControlReleaseReason, ahead, continuation != null,
+                continuationStitches, waitingForChunks, route.size(), next, endsAtDestination);
+    }
 
     public static boolean start(BlockPos target) {
         return start(target, true);
@@ -65,6 +86,7 @@ public final class PlayerNavigation {
         automatic = autopilot;
         sprintRequested = sprinting;
         goal = target.immutable();
+        lastEndReason = "ACTIVE";
         destination = Vec3.atBottomCenterOf(goal);
         priorYaw = nextYaw = player.getYRot();
         priorPitch = nextPitch = player.getXRot();
@@ -76,10 +98,6 @@ public final class PlayerNavigation {
     public static void tick(boolean screenOpen) {
         if (!screenOpen) TerrainScan.tick(Minecraft.getInstance().level);
         if (goal == null) return;
-        boolean held = false;
-        for (boolean direction : heldDirections) held |= direction;
-        heldTicks = held ? heldTicks + 1 : 0;
-        if (automatic && heldTicks >= 12) { cancel(); return; }
         Minecraft mc = Minecraft.getInstance();
         if (mc.level != level || mc.player != player || !player.isAlive()
                 || player.isSpectator() || !mover.isAlive()
@@ -89,11 +107,28 @@ public final class PlayerNavigation {
             return;
         }
         if (screenOpen && automatic) {
-            releaseControls(mc);
+            heldTicks = 0;
+            Arrays.fill(heldDirections, false);
+            Arrays.fill(lastPress, 0);
+            releaseControls(mc, "SCREEN_OPEN");
             priorYaw = nextYaw = player.getYRot();
             priorPitch = nextPitch = player.getXRot();
             yawSpeed = 0;
             return;
+        }
+        if (automatic) {
+            int pressed = 0;
+            for (int i = 0; i < heldDirections.length; i++) if (heldDirections[i]) pressed |= 1 << i;
+            heldTicks = pressed == 0 ? 0 : heldTicks + 1;
+            if (heldTicks >= 12) {
+                cancel();
+                // The original press was consumed while navigation owned movement.
+                if ((pressed & (1 << FORWARD_KEY)) != 0) mc.options.keyUp.setDown(true);
+                if ((pressed & (1 << LEFT_KEY)) != 0) mc.options.keyLeft.setDown(true);
+                if ((pressed & (1 << BACK_KEY)) != 0) mc.options.keyDown.setDown(true);
+                if ((pressed & (1 << RIGHT_KEY)) != 0) mc.options.keyRight.setDown(true);
+                return;
+            }
         }
         priorYaw = nextYaw = player.getYRot();
         priorPitch = nextPitch = player.getXRot();
@@ -104,11 +139,12 @@ public final class PlayerNavigation {
             blockedSteps.clear();
         }
         if (hudCooldown-- <= 0 && !screenOpen) {
-            NavigationPlatform.distance(mc, automatic, (int) Math.ceil(position.distanceTo(destination)));
+            NavigationPlatform.distance(mc, automatic, NavigationTrace.remainingBlocks(position));
             hudCooldown = 9;
         }
         if (mover == player && (player.isFallFlying() || player.getAbilities().flying)) {
             if (!airborne) {
+                swim = null;
                 resetPlan(mc);
                 updateDestination(Vec3.atBottomCenterOf(goal));
                 airborne = true;
@@ -132,53 +168,145 @@ public final class PlayerNavigation {
             rocketCooldown = flight.tick(mc, level, player, destination, automatic, rocketCooldown);
             return;
         }
-        boolean grounded = NavigationPlatform.onGround(mover);
+        boolean swimming = mover.isInWater();
+        boolean grounded = NavigationPlatform.onGround(mover) || swimming;
         if (airborne) {
             flight = null;
             resetPlan(mc);
             airborne = false;
         }
+        boolean submergedTarget = mover == player && SwimmingNavigation.submerged(level, goal);
+        if (submergedTarget != submergedDestination) {
+            submergedDestination = submergedTarget;
+            swim = null;
+            swimRetry = swimEnterWait = 0;
+            resetPlan(mc);
+        }
+        if (swimRetry > 0) swimRetry--;
+        if (swimming && submergedTarget && (swim != null || swimRetry == 0
+                && SwimmingNavigation.waterAt(level, position.add(0, 0.02, 0)))) {
+            if (swim == null) {
+                resetPlan(mc);
+                swim = new SwimmingNavigation();
+                updateDestination(Vec3.atBottomCenterOf(goal));
+            }
+            swimEnterWait = 0;
+            var result = swim.tick(level, mover, destination, automatic);
+            switch (result.state()) {
+                case ARRIVED -> { finish(); return; }
+                case BLOCKED -> {
+                    swim = null;
+                    swimRetry = 80;
+                    resetPlan(mc);
+                }
+                case PLANNING -> {
+                    if (automatic) fly(mc, false, false, false);
+                    return;
+                }
+                case MOVING -> {
+                    if (automatic) steerSwim(mc, position, result.step());
+                    return;
+                }
+            }
+        } else if (swim != null) {
+            swim = null;
+            resetPlan(mc);
+        }
         if (automatic) steerPitch(0);
         if (search == null) {
             if (!grounded) return;
+            if (initialSearchDelay > 0) {
+                initialSearchDelay--;
+                return;
+            }
+            if (automatic && mover == player && player.isEyeInFluid(FluidTags.WATER)) {
+                jump = true;
+                mc.options.keyJump.setDown(true);
+                return;
+            }
             AABB footprint = mover.getBoundingBox().minmax(player.getBoundingBox()).deflate(0.002)
                     .move(-position.x, -position.y, -position.z);
-            search = new WalkingRoute(level, mover, footprint, position, Vec3.atBottomCenterOf(goal), blockedSteps);
-            updateDestination(search.destination());
-            releaseControls(mc);
+            Vec3 walkGoal = submergedTarget ? SwimmingNavigation.surface(level, goal) : Vec3.atBottomCenterOf(goal);
+            search = new WalkingRoute(level, mover, footprint, position, walkGoal, blockedSteps);
+            updateDestination(submergedTarget ? Vec3.atBottomCenterOf(goal) : search.destination());
+            releaseControls(mc, waitingForChunks ? "INITIAL_UNLOADED_CHUNK" : "INITIAL_SEARCH");
         }
         if (route.isEmpty()) {
-            var plan = search.advance();
+            var plan = search.advance(false, false);
             if (plan == null) return;
             route = plan.steps();
             if (route.isEmpty()) {
-                if (plan.arrives()) finish(); else fail();
+                if (plan.arrives()) {
+                    if (submergedTarget) enterWater(mc, swimming);
+                    else finish();
+                } else if (plan.waitingForChunks()) {
+                    waitingForChunks = true;
+                    search = null;
+                    initialSearchDelay = 2;
+                    releaseControls(mc, "INITIAL_UNLOADED_CHUNK");
+                    if (++initialChunkWait > 100) fail();
+                } else {
+                    fail();
+                }
                 return;
             }
+            waitingForChunks = false;
+            initialChunkWait = 0;
             endsAtDestination = plan.arrives();
+            if (endsAtDestination && !submergedTarget) updateDestination(route.get(route.size() - 1));
             previousStep = position;
             next = 0;
             bestDistance = Double.POSITIVE_INFINITY;
         }
+        // Keep look-ahead continuation advancing every tick, even while airborne over grass steps,
+        // so the next multi-chunk segment is stitched before the mover approaches the current frontier.
+        extendRoute();
         if (!grounded) {
+            // Keep the lead trace continuously anchored to the mover's horizontal path during step jumps.
+            Vec3 traceStart = new Vec3(position.x,
+                    Mth.clamp(position.y, Math.min(previousStep.y, route.get(next).y), Math.max(previousStep.y, route.get(next).y)),
+                    position.z);
+            NavigationTrace.route(traceStart, previousStep, route, next);
             if (automatic) {
-                // Keep the committed takeoff heading and geometry until the mover has landed.
-                // Steering at a waypoint beneath the mover can otherwise reverse the camera mid-jump.
-                yawSpeed = 0;
-                jump = false;
-                mc.options.keyJump.setDown(false);
+                if (strafeLeft) mc.options.keyLeft.setDown(false);
+                if (strafeRight) mc.options.keyRight.setDown(false);
+                strafeLeft = strafeRight = false;
                 Vec3 landing = route.get(next);
-                if (position.y >= landing.y - 0.05 && passedWaypoint(position, landing)) {
+                boolean exitingWater = !mover.isInWater() && SwimmingNavigation.waterAt(level, position.add(0, -0.35, 0));
+                boolean stopOnLanding = (next + 1 == route.size() && endsAtDestination)
+                        || (next + 1 < route.size() && sharpTurn(previousStep, landing, route.get(next + 1)));
+                if (stopOnLanding && position.y >= landing.y - 0.05 && passedWaypoint(position, landing)) {
+                    yawSpeed = 0;
+                    jump = false;
+                    mc.options.keyJump.setDown(false);
                     forward = false;
                     mc.options.keyUp.setDown(false);
                     if (sprintOwned) NavigationPlatform.routeSprint(mc, false);
                     sprintOwned = false;
+                } else if (exitingWater || (!forward && landing.y > position.y - 0.35
+                        && WalkingRoute.horizontal(position, landing) > 0.25)) {
+                    // When vaulting out of water onto a shore, feet leave the water just before
+                    // reaching the ledge. Keep steering and pushing forward onto the bank instead
+                    // of bobbing vertically in place.
+                    float delta = WalkingRoute.horizontal(position, landing) > 0.05
+                            ? steer(heading(position, landing)) : 0;
+                    forward = Math.abs(delta) < 40.0F;
+                    mc.options.keyUp.setDown(forward);
+                    boolean boostVault = exitingWater && landing.y > position.y + 0.05 && mover.horizontalCollision
+                            && !(mover == player && player.getAbilities().mayfly);
+                    jump = boostVault;
+                    mc.options.keyJump.setDown(boostVault);
+                } else {
+                    // Keep the committed takeoff heading and geometry until the mover has landed.
+                    // Steering at a waypoint beneath the mover can otherwise reverse the camera mid-jump.
+                    yawSpeed = 0;
+                    jump = false;
+                    mc.options.keyJump.setDown(false);
                 }
             }
             return;
         }
         search.refreshFooting();
-        extendRoute();
         while (next + 1 < route.size() && canAdvance(position)) advanceStep(position, next + 1);
         // Only cut across a corner when there is ground and room for the entire mover.
         for (int candidate = Math.min(next + 4, route.size() - 1); candidate > next; candidate--) {
@@ -191,21 +319,37 @@ public final class PlayerNavigation {
         boolean last = next + 1 == route.size();
         boolean crossed = passedWaypoint(position, step);
         boolean nearLeg = !offSegment(position, step, 0.70);
-        boolean atHeight = Math.abs(position.y - step.y) < 0.35;
+        boolean atHeight = Math.abs(position.y - step.y) < heightTolerance();
         if (last && (reached(step, endsAtDestination ? 0.65 : ARRIVAL_RADIUS)
                 || crossed && atHeight && nearLeg)) {
-            if (endsAtDestination) finish();
+            if (endsAtDestination && submergedTarget) enterWater(mc, swimming);
+            else if (endsAtDestination) finish();
             else {
-                releaseControls(mc);
-                if (++frontierWait > 100 && continuation == null && continuationFailures >= 2) fail();
+                releaseControls(mc, waitingForChunks ? "FRONTIER_UNLOADED_CHUNK" : "FRONTIER_WAITING_CONTINUATION");
+                if (!waitingForChunks && ++frontierWait > 100 && continuation == null && continuationFailures >= 2) fail();
             }
             return;
         }
         // An obsolete waypoint cannot guide us backwards. Rejoin the following leg only
         // through verified terrain, or plan a new approach from the actual feet.
         if (!search.standing(step) || crossed && (atHeight || !nearLeg || passedBy(position, step, 0.25))) {
-            requestDetour(mc, step);
-            return;
+            boolean rejoined = false;
+            for (int candidate = next + 1; candidate < route.size() && candidate <= next + 8; candidate++) {
+                Vec3 point = route.get(candidate);
+                if (WalkingRoute.horizontal(position, point) > 6 || !search.traversable(position, point)) continue;
+                advanceStep(position, candidate);
+                rejoined = true;
+                break;
+            }
+            if (!rejoined) {
+                requestDetour(mc, step);
+                return;
+            }
+            step = route.get(next);
+            last = next + 1 == route.size();
+            crossed = passedWaypoint(position, step);
+            nearLeg = !offSegment(position, step, 0.70);
+            atHeight = Math.abs(position.y - step.y) < heightTolerance();
         }
         if (!automatic) {
             if (offSegment(position, step, 1.25) || !search.traversable(position, step)) resetPlan(mc);
@@ -218,6 +362,13 @@ public final class PlayerNavigation {
         double height = step.y - position.y;
         if (offSegment(position, step, 0.70)
                 && !search.traversable(position, step)) {
+            requestDetour(mc, step);
+            return;
+        }
+        // A streamed corridor can change after planning. Check the part the mover is about
+        // to enter so a new obstruction does not wait for the lack-of-progress timeout.
+        if (Math.abs(height) <= 0.002 && distance > 0.25
+                && !search.flat(position, position.lerp(step, Math.min(1, 1.25 / Math.sqrt(distance))))) {
             requestDetour(mc, step);
             return;
         }
@@ -242,47 +393,89 @@ public final class PlayerNavigation {
                 && WalkingRoute.horizontal(position, step) < 0.32 + 3 * speed
                 && sharpTurn(previousStep, step, route.get(next + 1));
         forward = Math.abs(delta) < 22.0F && !coast && !braking;
-        jump = forward && Math.abs(delta) < 16.0F && nearLeg && !crossed && jumpForStep(position, step, height);
+        strafeLeft = strafeRight = false;
+        if (!swimming && !coast && atHeight && Math.abs(delta) >= 22 && Math.abs(delta) < 112.5F) {
+            boolean moveForward = Math.abs(delta) < 67.5F;
+            boolean moveLeft = delta < 0;
+            double yaw = Math.toRadians(player.getYRot());
+            double dx = (moveForward ? -Math.sin(yaw) : 0) + (moveLeft ? Math.cos(yaw) : -Math.cos(yaw));
+            double dz = (moveForward ? Math.cos(yaw) : 0) + (moveLeft ? Math.sin(yaw) : -Math.sin(yaw));
+            double length = Math.hypot(dx, dz);
+            Vec3 probe = position.add(dx * 0.45 / length, 0, dz * 0.45 / length);
+            if (search.flat(position, probe)) {
+                forward = moveForward;
+                strafeLeft = moveLeft;
+                strafeRight = !moveLeft;
+            }
+        }
+        boolean climbAhead = mover.horizontalCollision && search.climbAhead(position, step);
+        jump = swimming || forward && Math.abs(delta) < 16.0F && (nearLeg || climbAhead) && !crossed
+                && jumpForStep(position, step, height, climbAhead);
         mc.options.keyUp.setDown(forward);
-        mc.options.keyJump.setDown(jump);
-        boolean sprint = sprintRequested && mover == player && forward && Math.abs(delta) < 15 && distance > 2.25 && !jump
+        mc.options.keyLeft.setDown(strafeLeft);
+        mc.options.keyRight.setDown(strafeRight);
+        boolean sprint = sprintRequested && mover == player && forward
                 && (player.getAbilities().mayfly || player.getFoodData().getFoodLevel() > 6)
-                && !player.isUsingItem() && !player.isShiftKeyDown() && !player.isInWater();
+                && !player.isUsingItem() && !player.isShiftKeyDown();
         if (sprint || sprintOwned) NavigationPlatform.routeSprint(mc, sprint);
         sprintOwned = sprint;
+        // A pair of synthetic jump presses can toggle Creative flight after a failed takeoff.
+        // Use the player's normal grounded jump impulse without opening the flight-toggle window.
+        boolean creativeGroundJump = jump && !swimming && mover == player && player.getAbilities().mayfly;
+        mc.options.keyJump.setDown(jump && !creativeGroundJump);
+        if (creativeGroundJump) player.jumpFromGround();
+    }
+
+    private static double remainingConfirmedDistance(Vec3 position) {
+        double ahead = 0;
+        Vec3 from = position;
+        for (int i = next; i < route.size(); i++) {
+            Vec3 to = route.get(i);
+            ahead += from.distanceTo(to);
+            from = to;
+        }
+        return ahead;
     }
 
     private static void extendRoute() {
-        if (endsAtDestination) return;
+        if (endsAtDestination || route.isEmpty()) return;
         Vec3 end = route.get(route.size() - 1);
+        double ahead = remainingConfirmedDistance(mover.position());
         if (continuation == null) {
-            double ahead = 0;
-            Vec3 from = mover.position();
-            for (int i = next; i < route.size() && ahead <= PLANNING_HORIZON; i++) {
-                Vec3 to = route.get(i);
-                ahead += from.distanceTo(to);
-                from = to;
-            }
             if (ahead > PLANNING_HORIZON || continuationDelay-- > 0) return;
             continuation = search.continueFrom(end, blockedSteps);
         }
-        var plan = continuation.advance();
+        boolean urgent = ahead < 14.0;
+        var plan = continuation.advance(true, urgent);
         if (plan == null) return;
-        if (!plan.steps().isEmpty() || plan.arrives()) updateDestination(continuation.destination());
+        if (!submergedDestination && (!plan.steps().isEmpty() || plan.arrives())) {
+            var approach = plan.steps();
+            updateDestination(plan.arrives() && !approach.isEmpty()
+                    ? approach.get(approach.size() - 1) : continuation.destination());
+        }
         continuation = null;
         if (plan.steps().isEmpty()) {
             endsAtDestination = plan.arrives();
-            continuationDelay = 10;
-            continuationFailures++;
+            waitingForChunks = plan.waitingForChunks();
+            if (waitingForChunks) {
+                continuationDelay = 2;
+            } else {
+                continuationDelay = 4;
+                continuationFailures++;
+            }
             return;
         }
-        var joined = new ArrayList<Vec3>(route.size() - next + plan.steps().size());
+        waitingForChunks = false;
+        var incoming = plan.steps();
+        int startIndex = !incoming.isEmpty() && incoming.get(0).distanceToSqr(end) < 1e-4 ? 1 : 0;
+        var joined = new ArrayList<Vec3>(route.size() - next + incoming.size() - startIndex);
         joined.addAll(route.subList(next, route.size()));
-        joined.addAll(plan.steps());
+        for (int i = startIndex; i < incoming.size(); i++) joined.add(incoming.get(i));
         route = List.copyOf(joined);
         next = 0;
         frontierWait = 0;
         continuationFailures = 0;
+        continuationStitches++;
         endsAtDestination = plan.arrives();
     }
 
@@ -317,7 +510,7 @@ public final class PlayerNavigation {
     private static boolean canAdvance(Vec3 position) {
         Vec3 step = route.get(next);
         Vec3 following = route.get(next + 1);
-        if (Math.abs(position.y - step.y) >= 0.35) return false;
+        if (Math.abs(position.y - step.y) >= heightTolerance()) return false;
         double distance = WalkingRoute.horizontal(step, following);
         if (distance > 1.4 && Math.abs(following.y - step.y) <= 0.002)
             following = step.lerp(following, 1.4 / distance);
@@ -364,6 +557,29 @@ public final class PlayerNavigation {
         minecraft.options.keyShift.setDown(lower);
     }
 
+    private static void steerSwim(Minecraft minecraft, Vec3 from, Vec3 to) {
+        double horizontal = WalkingRoute.horizontal(from, to);
+        double height = to.y - from.y;
+        float delta = horizontal > 0.08 ? steer(heading(from, to)) : 0;
+        steerPitch((float) Mth.clamp(-Math.toDegrees(Math.atan2(height, Math.max(0.08, horizontal))), -80, 80));
+        double vertical = height - mover.getDeltaMovement().y * 1.5;
+        fly(minecraft, horizontal > 0.20 && Math.abs(delta) < 22, vertical > 0.20, vertical < -0.20);
+        boolean sprint = forward && sprintRequested && !descend
+                && (player.getAbilities().mayfly || player.getFoodData().getFoodLevel() > 6);
+        if (sprint || sprintOwned) NavigationPlatform.routeSprint(minecraft, sprint);
+        sprintOwned = sprint;
+    }
+
+    private static void enterWater(Minecraft minecraft, boolean swimming) {
+        if (!automatic) return;
+        if (!swimming || swimEnterWait++ >= 60) {
+            fail();
+            return;
+        }
+        if (swimRetry == 0) fly(minecraft, false, false, true);
+        else releaseControls(minecraft);
+    }
+
     static float steer(float targetYaw) {
         float current = player.getYRot();
         float delta = Mth.wrapDegrees(targetYaw - current);
@@ -405,27 +621,38 @@ public final class PlayerNavigation {
     }
 
     private static void requestDetour(Minecraft mc, Vec3 step) {
-        if (++replans > 4) { fail(); return; }
-        if (detourOrigin == null) detourOrigin = mover.position();
-        blockedSteps.add(new WalkingRoute.Edge(previousStep, step));
-        resetPlan(mc);
+        if (++replans > 8) { fail(); return; }
+        Vec3 feet = mover.position();
+        if (detourOrigin == null) detourOrigin = feet;
+        double distance = feet.distanceTo(step);
+        Vec3 blocked = distance <= 1.25 ? step : feet.lerp(step, 1.25 / distance);
+        blockedSteps.add(new WalkingRoute.Edge(feet, blocked));
+        // Keep the existing trace visible during brief detour replanning so the blue line does not blink blank.
+        resetPlan(mc, false, "DETOUR_REPLAN");
     }
 
     private static void resetPlan(Minecraft mc) {
-        releaseControls(mc);
+        resetPlan(mc, true, "RESET_PLAN");
+    }
+
+    private static void resetPlan(Minecraft mc, boolean clearTrace, String reason) {
+        releaseControls(mc, reason);
         search = continuation = null;
         route = List.of();
         next = ticksWithoutProgress = 0;
+        initialSearchDelay = initialChunkWait = 0;
         continuationDelay = continuationFailures = frontierWait = 0;
-        // The trace belongs to the navigation session. Keep it until a replacement is ready.
+        waitingForChunks = false;
+        if (clearTrace) NavigationTrace.clearRoute();
     }
 
     private static void fail() {
-        cancel();
+        lastEndReason = "UNREACHABLE";
+        finishWithReason("UNREACHABLE");
         playerMessage("xaeroearth.navigation.unreachable");
     }
 
-    private static boolean jumpForStep(Vec3 position, Vec3 step, double height) {
+    private static boolean jumpForStep(Vec3 position, Vec3 step, double height, boolean climbAhead) {
         boolean needsJump = height > NavigationPlatform.stepHeight(mover) + 0.002;
         double dx = step.x - position.x, dz = step.z - position.z;
         double distance = Math.hypot(dx, dz);
@@ -436,7 +663,7 @@ public final class PlayerNavigation {
         double reachZ = 0.5 + (bounds.maxZ - bounds.minZ) * 0.5;
         double contact = (Math.abs(dx) * reachX + Math.abs(dz) * reachZ) / Math.max(0.001, distance);
         double takeoffDistance = Math.max(1.06, contact + (mover.horizontalCollision ? 0.28 : 0.16));
-        boolean atTakeoff = distance <= takeoffDistance;
+        boolean atTakeoff = climbAhead || distance <= takeoffDistance;
         if (!(mover instanceof PlayerRideableJumping mount) || !mount.canJump())
             return needsJump && NavigationPlatform.onGround(mover) && atTakeoff;
         if (mountJumpCooldown > 0) {
@@ -454,27 +681,39 @@ public final class PlayerNavigation {
     private static boolean reached(Vec3 pos, double radius) {
         double x = pos.x - mover.getX();
         double z = pos.z - mover.getZ();
-        return x * x + z * z < radius * radius && Math.abs(mover.getY() - pos.y) < 0.35;
+        return x * x + z * z < radius * radius && Math.abs(mover.getY() - pos.y) < heightTolerance();
     }
+
+    private static double heightTolerance() { return mover.isInWater() ? 1.0 : 0.35; }
 
     public static void cancel() {
         TerrainScan.stop();
-        finish();
+        finishWithReason("CANCELLED");
     }
 
     private static void finish() {
+        finishWithReason("ARRIVED");
+    }
+
+    private static void finishWithReason(String reason) {
         if (goal == null) return;
+        lastEndReason = reason;
         Minecraft minecraft = Minecraft.getInstance();
         releaseControls(minecraft);
         NavigationPlatform.clearDistance(minecraft);
         level = null; player = null; mover = null; goal = null;
         route = List.of();
-        search = continuation = null; flight = null; blockedSteps.clear(); detourOrigin = previousStep = destination = null;
+        search = continuation = null; flight = null; swim = null; swimRetry = swimEnterWait = 0;
+        blockedSteps.clear(); detourOrigin = previousStep = destination = null;
         NavigationTrace.stop();
         next = 0; ticksWithoutProgress = 0; mountJumpCooldown = 0; replans = 0;
+        initialSearchDelay = initialChunkWait = 0;
         continuationDelay = continuationFailures = frontierWait = 0;
+        continuationStitches = 0;
+        waitingForChunks = false;
+        lastControlReleaseReason = reason;
         yawSpeed = 0;
-        automatic = sprintRequested = airborne = false;
+        automatic = sprintRequested = airborne = submergedDestination = false;
         previousAirPosition = null;
         rocketCooldown = hudCooldown = 0;
         heldTicks = 0;
@@ -490,38 +729,44 @@ public final class PlayerNavigation {
         return true;
     }
 
-    /** Consume movement input until Escape, a double press, or a sustained direction cancels navigation. */
-    public static boolean manualKey(int key, int action) {
+    public static boolean cancelWithEscape() {
         if (goal == null) return false;
-        if (key == GLFW.GLFW_KEY_ESCAPE && action == GLFW.GLFW_PRESS) {
-            cancel();
-            return true;
-        }
-        if (!automatic) return false;
-        for (int i = 0; i < DIRECTION_KEYS.length; i++) {
-            if (DIRECTION_KEYS[i] != key) continue;
-            if (action == GLFW.GLFW_PRESS) {
-                long now = System.nanoTime();
-                if (lastPress[i] != 0 && now - lastPress[i] <= 400_000_000L) {
-                    cancel();
-                    return true;
-                }
-                lastPress[i] = now;
-                heldDirections[i] = true;
-            } else if (action == GLFW.GLFW_RELEASE) {
-                heldDirections[i] = false;
+        cancel();
+        return true;
+    }
+
+    /** Consume directional input during automatic movement and hand over on a double press. */
+    public static boolean manualMovement(int direction, int action) {
+        if (!active()) return false;
+        if (action == GLFW.GLFW_PRESS) {
+            long now = System.nanoTime();
+            if (lastPress[direction] != 0 && now - lastPress[direction] <= 400_000_000L) {
+                cancel();
+                return false;
             }
-            return true;
+            lastPress[direction] = now;
+            heldDirections[direction] = true;
+        } else if (action == GLFW.GLFW_RELEASE) {
+            heldDirections[direction] = false;
         }
-        return false;
+        return true;
     }
 
     private static void releaseControls(Minecraft minecraft) {
+        releaseControls(minecraft, "RELEASE");
+    }
+
+    private static void releaseControls(Minecraft minecraft, String reason) {
+        if (forward || strafeLeft || strafeRight || jump || descend || sprintOwned) {
+            lastControlReleaseReason = reason;
+        }
         if (forward) minecraft.options.keyUp.setDown(false);
+        if (strafeLeft) minecraft.options.keyLeft.setDown(false);
+        if (strafeRight) minecraft.options.keyRight.setDown(false);
         if (jump) minecraft.options.keyJump.setDown(false);
         if (descend) minecraft.options.keyShift.setDown(false);
         if (sprintOwned) NavigationPlatform.routeSprint(minecraft, false);
-        forward = jump = descend = sprintOwned = false;
+        forward = jump = descend = strafeLeft = strafeRight = sprintOwned = false;
     }
 
     public static void playerMessage(String key) {

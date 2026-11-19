@@ -3,6 +3,8 @@ package io.github.kltyton.xaeroearth.client.mixin;
 import io.github.kltyton.xaeroearth.client.ui.NativeMinimapTerrain;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.Unique;
 import org.joml.Vector3f;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -18,7 +20,14 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
 @Pseudo
 @Mixin(targets = "xaero.hud.minimap.element.render.map.MinimapElementMapRendererHandler", remap = false)
 public abstract class MinimapMarkerProjectionMixin {
+    @Shadow private float halfWView;
     @Unique private Vector3f earth$point;
+
+    @Inject(method = "afterRender", at = @At("HEAD"))
+    private void earth$annotationLabels(PoseStack graphics, MinimapElementRenderInfo info, MultiBufferSource.BufferSource buffers, CallbackInfo callback) {
+        NativeMinimapTerrain.paintLabels(halfWView, (font, label, x, y) ->
+                font.drawShadow(graphics, label, x, y, 0xffe9f8ff));
+    }
 
     @Inject(method = "transformAndRenderForRenderer", at = @At("HEAD"))
     private void earth$project(Object element, double x, double y, double z, MinimapElementRenderer<?, ?> renderer,

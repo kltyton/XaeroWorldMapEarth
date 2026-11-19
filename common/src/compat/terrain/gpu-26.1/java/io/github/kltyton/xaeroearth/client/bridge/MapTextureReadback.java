@@ -44,5 +44,8 @@ final class MapTextureReadback implements AutoCloseable {
         }
     }
 
+    // Minecraft dispatches these copies through its command encoder callback.
+    void poll() { }
+
     @Override public void close() {  }
 }

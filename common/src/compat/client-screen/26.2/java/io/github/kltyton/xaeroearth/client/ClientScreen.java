@@ -11,8 +11,12 @@ public final class ClientScreen {
         return button.getMessage().getContents() instanceof TranslatableContents translated
                 && translated.getKey().startsWith("xaeroearth.view.");
     }
-    static net.minecraft.network.chat.Component viewLabel(String key) {
+    public static void open(Minecraft minecraft, Screen screen) { minecraft.gui.setScreen(screen); }
+    public static net.minecraft.network.chat.Component viewLabel(String key) {
         return net.minecraft.network.chat.Component.translatable(key);
+    }
+    public static net.minecraft.network.chat.Component literal(String text) {
+        return net.minecraft.network.chat.Component.literal(text);
     }
     private ClientScreen() { }
 }

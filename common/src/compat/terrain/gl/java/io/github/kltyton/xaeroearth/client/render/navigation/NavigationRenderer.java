@@ -8,6 +8,7 @@ import io.github.kltyton.kltytonui.chunkmap.KuiMapDepthTarget;
 import io.github.kltyton.kltytonui.chunkmap.KuiMapRenderState;
 import io.github.kltyton.xaeroearth.client.navigation.NavigationTrace;
 import io.github.kltyton.xaeroearth.client.chunkmap.MapCamera;
+import io.github.kltyton.xaeroearth.client.mapmark.MapMarkMesh;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import net.minecraft.client.Minecraft;
@@ -37,10 +38,20 @@ public final class NavigationRenderer {
                 NavigationTrace.mapWidth(camera, target.width));
     }
 
+    public static void drawMarks(RenderTarget target, MapCamera camera, KuiMapDepthTarget depth, MapMarkMesh marks) {
+        drawVertices(target, depth, camera.viewMatrix(), camera.projectionMatrix(), marks.count(),
+                buffer -> marks.write(buffer, camera));
+    }
+
     private static void drawTrace(RenderTarget target, KuiMapDepthTarget depth,
                                   Matrix4f view, Matrix4f projection, Vec3 camera, double width) {
         Minecraft minecraft = Minecraft.getInstance();
         int count = NavigationTrace.vertices(minecraft.level);
+        drawVertices(target, depth, view, projection, count, buffer -> NavigationTrace.write(buffer, camera, width));
+    }
+
+    private static void drawVertices(RenderTarget target, KuiMapDepthTarget depth, Matrix4f view, Matrix4f projection,
+                                     int count, java.util.function.Consumer<ByteBuffer> write) {
         if (count == 0) return;
         int bytes = Math.multiplyExact(count, NavigationTrace.STRIDE);
         if (vertices == null || vertices.capacity() < bytes) {
@@ -48,7 +59,7 @@ public final class NavigationRenderer {
             vertices = MemoryUtil.memAlloc(bytes).order(ByteOrder.nativeOrder());
         }
         vertices.clear();
-        NavigationTrace.write(vertices, camera, width);
+        write.accept(vertices);
         try (var state = new KuiMapRenderState(target, depth)) {
             if (shader == null) {
                 shader = new KuiMapGlProgram("xaeroearth", "navigation_trace");

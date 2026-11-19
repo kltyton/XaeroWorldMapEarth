@@ -22,6 +22,7 @@ final class FlightNavigation {
     private int next, retryDelay, extensionDelay;
     private int validationDelay;
     private Vec3 anchor;
+    private Vec3 landing;
     private boolean arrives;
 
     FlightNavigation(Vec3 origin) { anchor = origin; }
@@ -59,6 +60,8 @@ final class FlightNavigation {
         double slack = gliding ? 1.8 : 0.7;
         Vec3 approach = aim.subtract(anchor);
         Vec3 fromAim = position.subtract(aim);
+        if (automatic && gliding && arrives && next + 1 == steps.size()
+                && steerLanding(level, player, destination, position, approach)) return cooldown;
         boolean passed = gliding && fromAim.lengthSqr() < 16 && fromAim.dot(approach) >= 0;
         if ((position.distanceToSqr(aim) < slack * slack || passed) && (!arrives || next + 1 < steps.size())) {
             if (next + 1 == steps.size()) {
@@ -98,7 +101,9 @@ final class FlightNavigation {
             Vec3 tangent = leg.normalize();
             Vec3 velocity = player.getDeltaMovement();
             Vec3 drift = velocity.subtract(tangent.scale(velocity.dot(tangent)));
-            direction = direction.subtract(drift.scale(GLIDE_CORRECTION_TICKS));
+            double correction = Math.min(GLIDE_CORRECTION_TICKS,
+                    direction.length() / Math.max(0.05, velocity.length()));
+            direction = direction.subtract(drift.scale(correction));
         }
         double horizontal = Math.sqrt(direction.horizontalDistanceSqr());
         float turn = horizontal > 0.15 ? PlayerNavigation.steer(PlayerNavigation.heading(position, position.add(direction))) : 0;
@@ -125,7 +130,8 @@ final class FlightNavigation {
         float glidePitch = Mth.clamp(pitch, -48, 76);
         PlayerNavigation.steerPitch(glidePitch);
         // Rocket thrust follows the current look. A steep descent already supplies speed through gravity.
-        if (cooldown > 0 || WalkingRoute.horizontal(position, destination) <= 22 || Math.abs(turn) >= 12
+        if (cooldown > 0 || position.distanceToSqr(destination) <= 22 * 22 && destination.y <= position.y + 3
+                || Math.abs(turn) >= 12
                 || glidePitch > MAX_BOOST_DIVE || Math.abs(player.getXRot() - glidePitch) > 6
                 || player.getDeltaMovement().lengthSqr() >= 0.85 || minecraft.gameMode == null
                 || player.isUsingItem() || !planner.clear(position, position.add(player.getLookAngle().scale(13))))
@@ -134,15 +140,78 @@ final class FlightNavigation {
             if (player.getItemInHand(hand).is(Items.FIREWORK_ROCKET)
                     && NavigationPlatform.useRocket(minecraft, player, hand)) return BOOST_INTERVAL;
         }
+        var inventory = player.getInventory();
+        int original = HotbarSelection.selected(inventory);
+        for (int slot = 0; slot < 9; slot++) {
+            if (slot == original || !inventory.getItem(slot).is(Items.FIREWORK_ROCKET)) continue;
+            try {
+                // Vanilla synchronizes the newly carried slot before sending the use packet.
+                HotbarSelection.select(inventory, slot);
+                return NavigationPlatform.useRocket(minecraft, player, InteractionHand.MAIN_HAND) ? BOOST_INTERVAL : 8;
+            } finally {
+                HotbarSelection.select(inventory, original);
+            }
+        }
+        if (player.containerMenu == player.inventoryMenu) {
+            for (int slot = 9; slot < 36; slot++) {
+                if (!inventory.getItem(slot).is(Items.FIREWORK_ROCKET)) continue;
+                HotbarSelection.swapWithInventory(minecraft, player, slot, original);
+                try {
+                    return player.getMainHandItem().is(Items.FIREWORK_ROCKET)
+                            && NavigationPlatform.useRocket(minecraft, player, InteractionHand.MAIN_HAND) ? BOOST_INTERVAL : 8;
+                } finally {
+                    HotbarSelection.swapWithInventory(minecraft, player, slot, original);
+                }
+            }
+        }
         return cooldown;
+    }
+
+    private boolean steerLanding(ClientLevel level, LocalPlayer player, Vec3 goal, Vec3 position, Vec3 approach) {
+        if (landing == null) {
+            Vec3 offset = position.subtract(goal);
+            boolean passed = offset.x * approach.x + offset.z * approach.z > 0;
+            if (!passed || offset.horizontalDistanceSqr() > 14 * 14 || Math.abs(offset.y) > 8) return false;
+            Vec3 velocity = player.getDeltaMovement();
+            var heading = new Vec3(velocity.x, 0, velocity.z).normalize();
+            if (heading.lengthSqr() < 0.01) return false;
+            var body = player.getBoundingBox().deflate(0.002).move(-position.x, -position.y, -position.z);
+            var footing = new WalkingRoute(level, player, body, position, goal, List.of());
+            if (!footing.standing(footing.destination())) return false;
+            // A late approach can land ahead and finish with the ordinary ground navigator.
+            // Do not turn a fast glider back through the target at ground level.
+            for (int distance = 4; distance <= 12 && landing == null; distance += 4) {
+                Vec3 probe = position.add(heading.scale(distance));
+                for (Vec3 candidate : footing.landings(probe.x, probe.z, goal.y)) {
+                    if (candidate.y <= position.y + 0.1 && planner.clear(position, candidate)) {
+                        landing = candidate;
+                        break;
+                    }
+                }
+            }
+        }
+        if (landing == null) return false;
+        Vec3 leg = landing.subtract(position);
+        Vec3 velocity = player.getDeltaMovement();
+        if (leg.x * velocity.x + leg.z * velocity.z < 0 || !planner.clear(position, landing)) {
+            landing = null;
+            return false;
+        }
+        PlayerNavigation.steer(PlayerNavigation.heading(position, landing));
+        PlayerNavigation.steerPitch((float) Mth.clamp(-Math.toDegrees(Math.atan2(leg.y,
+                Math.max(0.15, Math.sqrt(leg.horizontalDistanceSqr())))), -8, 58));
+        NavigationTrace.airRoute(position, List.of(landing), 0);
+        return true;
     }
 
     private void replan(int delay) {
         planner = extension = null;
         steps = List.of();
+        landing = null;
         next = 0;
         retryDelay = delay;
         extensionDelay = 0;
+        NavigationTrace.clearRoute();
     }
 
     private void extend(ClientLevel level, LocalPlayer player, Vec3 position, Vec3 destination) {

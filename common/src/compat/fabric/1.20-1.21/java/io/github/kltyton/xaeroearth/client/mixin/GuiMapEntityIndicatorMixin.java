@@ -36,7 +36,7 @@ abstract class GuiMapEntityIndicatorMixin {
     @WrapOperation(method = "render", at = @At(value = "INVOKE", remap = false, desc = @org.spongepowered.asm.mixin.injection.Desc(owner = xaero.map.gui.GuiMap.class, value = "drawFarArrowOnMap", args = {com.mojang.blaze3d.vertex.PoseStack.class, com.mojang.blaze3d.vertex.VertexConsumer.class, double.class, double.class, float.class, double.class}, ret = void.class)), require = 3)
     private void earth$farActorModel(GuiMap map, PoseStack pose, VertexConsumer vertices, double x, double z,
                                     float yaw, double scale, Operation<Void> original) {
-        if (!NativeMapEntityIndicators.replaceActor(map, player)) original.call(map, pose, vertices, x, z, yaw, scale);
+        if (!NativeMapEntityIndicators.replaceFarActor(map, player)) original.call(map, pose, vertices, x, z, yaw, scale);
     }
 
     @Inject(method = "render", slice = @Slice(from = @At(value = "INVOKE", remap = false,

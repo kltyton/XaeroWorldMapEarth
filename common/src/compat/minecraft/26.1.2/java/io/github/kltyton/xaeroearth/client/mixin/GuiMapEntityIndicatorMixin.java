@@ -37,7 +37,7 @@ abstract class GuiMapEntityIndicatorMixin {
     @WrapOperation(method = "extractRenderState", at = @At(value = "INVOKE", target = "Lxaero/map/gui/GuiMap;drawFarArrowOnMap(Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;DDFD)V"), require = 3)
     private void earth$farActorModel(GuiMap map, PoseStack pose, VertexConsumer vertices, double x, double z,
                                     float yaw, double scale, Operation<Void> original) {
-        if (!NativeMapEntityIndicators.replaceActor(map, player)) original.call(map, pose, vertices, x, z, yaw, scale);
+        if (!NativeMapEntityIndicators.replaceFarActor(map, player)) original.call(map, pose, vertices, x, z, yaw, scale);
     }
 
     @Inject(method = "extractRenderState", at = @At(value = "INVOKE",

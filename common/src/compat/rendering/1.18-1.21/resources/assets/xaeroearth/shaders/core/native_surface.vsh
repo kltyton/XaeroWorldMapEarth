@@ -94,10 +94,13 @@ void main() {
             outlineDepth = -1.0 - float(vertex.y);
         } else {
             corner = vertex.x == 0 ? start : end;
-            height = cornerHeight(corner);
-            outlineDepth = float(vertex.y);
+            float topHeight = cornerHeight(corner);
+            if (detailed(outlineCell)) {
+                topHeight = min(topHeight, texelFetch(SurfaceHeight, outlineCell, 0).r);
+            }
             float faceHeight = clamp(Grid.z * 2.0 + 3.0, 5.0, 14.0);
-            if (vertex.y == 1) height = min(height, max(SurfaceOrigin.w, height - faceHeight));
+            height = vertex.y == 0 ? topHeight : min(topHeight, SurfaceOrigin.w);
+            outlineDepth = vertex.y == 0 ? 0.0 : clamp((topHeight - height) / faceHeight, 1.0, 64.0);
         }
         localPosition = vec3(float(corner.x) * Grid.z, height, float(corner.y) * Grid.z) + SurfaceOrigin.xyz;
         gl_Position = ProjMat * ModelViewMat * vec4(localPosition, 1.0);

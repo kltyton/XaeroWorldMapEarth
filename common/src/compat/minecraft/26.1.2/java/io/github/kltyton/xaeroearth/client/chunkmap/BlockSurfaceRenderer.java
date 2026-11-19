@@ -121,7 +121,7 @@ public final class BlockSurfaceRenderer implements AutoCloseable, BlockSurfaceDa
                 new Vector4f(1, 1, 1, 1), new Vector3f(), new Matrix4f());
         var oldProjection = RenderSystem.getProjectionMatrixBuffer();
         var oldType = RenderSystem.getProjectionType();
-        RenderSystem.setProjectionMatrix(projection.getBuffer(camera.nativeProjectionMatrix(RenderSystem.getDevice().isZZeroToOne())),
+        RenderSystem.setProjectionMatrix(projection.getBuffer(camera.nativeForwardProjectionMatrix(RenderSystem.getDevice().isZZeroToOne())),
                 camera.mode().equals("street") ? ProjectionType.PERSPECTIVE : ProjectionType.ORTHOGRAPHIC);
         var atlas = Minecraft.getInstance().getTextureManager().getTexture(TextureAtlas.LOCATION_BLOCKS);
         try {

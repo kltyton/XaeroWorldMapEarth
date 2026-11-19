@@ -8,6 +8,8 @@ import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Shadow;
+import org.lwjgl.opengl.GL11;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -22,6 +24,8 @@ import xaero.hud.minimap.module.MinimapSession;
 @Mixin(targets = "xaero.common.minimap.render.MinimapFBORenderer", remap = false)
 public abstract class MinimapTerrainMixin {
     @Shadow private ImprovedFramebuffer scalingFramebuffer;
+    @Shadow private ImprovedFramebuffer rotationFramebuffer;
+    @Unique private ImprovedFramebuffer earth$filteredFramebuffer;
 
     @Inject(method = "renderChunksToFBO", at = @At(value = "FIELD",
             target = "Lxaero/hud/minimap/common/config/option/MinimapProfiledConfigOptions;CHUNK_GRID:Lxaero/lib/common/config/option/RangeConfigOption;"))
@@ -32,11 +36,24 @@ public abstract class MinimapTerrainMixin {
                                CallbackInfo callback) {
         if (scalingFramebuffer != null)
             NativeMinimapTerrain.draw(scalingFramebuffer, center, ((MinimapRenderer) (Object) this).getZoom(),
-                    viewWidth, dimension, cave, lockedNorth, sine, cosine);
+                    viewWidth, dimension, cave, lockedNorth, shape, sine, cosine);
     }
 
     @Inject(method = "renderChunksToFBO", at = @At("RETURN"))
     private void earth$finish(CallbackInfo callback) {
+        // The previous pass still follows Xaero's anti-aliasing selection. Do not blur those
+        // already sampled pixels a second time when enlarging the 3D HUD to the GUI.
+        if (rotationFramebuffer != earth$filteredFramebuffer) earth$filteredFramebuffer = null;
+        if (rotationFramebuffer != null && NativeMinimapTerrain.painted()) {
+            if (earth$filteredFramebuffer == null) {
+                rotationFramebuffer.setFilterMode(GL11.GL_NEAREST);
+                earth$filteredFramebuffer = rotationFramebuffer;
+            }
+        } else if (earth$filteredFramebuffer != null) {
+            // Xaero allocates the rotation texture with linear filtering.
+            earth$filteredFramebuffer.setFilterMode(GL11.GL_LINEAR);
+            earth$filteredFramebuffer = null;
+        }
         NativeMinimapTerrain.finishMarkers();
     }
 }
