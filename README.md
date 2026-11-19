@@ -20,13 +20,13 @@ Download the JAR for your Minecraft version and loader, then place it in your cl
 
 **Optional:** [Xaero's Minimap](https://www.curseforge.com/minecraft/mc-mods/xaeros-minimap) adds entity models to the map, using its radar filters and server permissions.
 
-The 0.1.3 downloads below bundle KltytonUI 1.3.1 and its NeonJS runtime.
+The 0.1.4 downloads below bundle KltytonUI 1.3.2 and its NeonJS runtime.
 
 The current source limits detailed block geometry around the active focus according to zoom and the configured radius. Distant terrain uses Xaero's coarser mapped heights and colors. In surface mode, Earth starts with sections around the heightmap and follows exposed air into deeper sections at cave openings and overhangs. Set `isometricDetailDistance` between 64 and 1536 to change the maximum radius.
 
-Earth terrain is enabled by default in Xaero's framebuffer minimap. Set `minimap3d=false` to use Xaero's original terrain. The world map and minimap share the saved map view, isometric yaw and pitch. Free-view rotation and movement last until you leave free view or close the world map. Xaero's terrain fills the minimap while Earth terrain is loading.
+Earth terrain is enabled by default in Xaero's framebuffer minimap. Set `minimap3d=false` to use Xaero's original terrain. The minimap follows the saved world-map view and isometric pitch. Middle-drag rotates the isometric or top-down map and Earth saves each view's angle. Double-click **Isometric** to restore its default angle. With Xaero's north lock enabled, the minimap also follows the saved world-map yaw. With north lock disabled, Xaero aligns it with the player. Free-view rotation and movement last until you leave free view or close the world map. Xaero's terrain fills the minimap while Earth terrain is loading.
 
-Use Xaero's Minimap Settings to change **Zoom** for the area shown and **Size** for the HUD frame. Earth follows the native zoom, including minimap zoom keybinds, and Xaero's north-lock setting. Earth starts at 1.5 times Xaero's zoom. Set `minimapZoomMultiplier` to `1.0` in `config/xaeroearth-client.toml` (Forge and NeoForge) or `config/xaeroearth-client.properties` (Fabric) for the native scale. Enable `minimapFollowWorldZoom` in the same file for a bounded adjustment based on world-map zoom.
+Use Xaero's Minimap Settings to change **Size** for the HUD frame. **Earth minimap zoom** in the minimap view settings adjusts Earth's independently saved zoom from 0.063x to 50.000x. The XaeroPlus **Minimap Scale Multiplier** controls the same value while Earth terrain is active. At 1.000x, the horizontal scale matches Xaero's original 2D minimap. Larger values show a closer view.
 
 The world-map context menu offers **Navigate here** and **Auto-navigate here**. Both show a 3D route in the world and Earth maps and a circular terrain scan with a white wavefront and cyan contours. Auto-navigation steers the player or a controlled mount. Press the sprint key during ground navigation to request sprinting. When already gliding with an elytra, auto-navigation steers toward the destination and can use firework rockets held in either hand. The HUD shows the distance to the destination. Press Escape to clear navigation, or double-press or hold a movement key to cancel auto-navigation.
 
@@ -39,20 +39,20 @@ TerrainScan.setProfile(4, 24, 10, 5, 28, 36, 1.45, 360);
 
 With a CompanionCall build that provides its map API, the world map shows controllable companions tracked by the client in the current dimension. Click a portrait to select it, Shift-click to change the selection, or Shift-drag on the map to select companions in a rectangle. Click mapped ground to send up to 32 selected companions there. CompanionCall authorizes and moves the companions on the server. The integration applies to the eight shared Minecraft and loader targets. Forge 1.18.2 and 1.19.2 have player navigation only.
 
-### Version 0.1.3
+### Version 0.1.4
 
 | Minecraft | Loader | Java | Download |
 | --- | --- | --- | --- |
-| 1.18.2 | Forge | 17 | [forge-1.18.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.3/xaero-world-map-earth-forge-1.18.2-0.1.3.jar) |
-| 1.19.2 | Forge | 17 | [forge-1.19.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.3/xaero-world-map-earth-forge-1.19.2-0.1.3.jar) |
-| 1.20.1 | Forge | 17 | [forge-1.20.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.3/xaero-world-map-earth-forge-1.20.1-0.1.3.jar) |
-| 1.20.1 | Fabric | 17 | [fabric-1.20.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.3/xaero-world-map-earth-fabric-1.20.1-0.1.3.jar) |
-| 1.21.1 | Fabric | 21 | [fabric-1.21.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.3/xaero-world-map-earth-fabric-1.21.1-0.1.3.jar) |
-| 1.21.1 | NeoForge | 21 | [neoforge-1.21.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.3/xaero-world-map-earth-neoforge-1.21.1-0.1.3.jar) |
-| 26.1.2 | Fabric | 25 | [fabric-26.1.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.3/xaero-world-map-earth-fabric-26.1.2-0.1.3.jar) |
-| 26.1.2 | NeoForge | 25 | [neoforge-26.1.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.3/xaero-world-map-earth-neoforge-26.1.2-0.1.3.jar) |
-| 26.2 | NeoForge | 25 | [neoforge-26.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.3/xaero-world-map-earth-neoforge-26.2-0.1.3.jar) |
-| 26.2 | Fabric | 25 | [fabric-26.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.3/xaero-world-map-earth-fabric-26.2-0.1.3.jar) |
+| 1.18.2 | Forge | 17 | [forge-1.18.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4/xaero-world-map-earth-forge-1.18.2-0.1.4.jar) |
+| 1.19.2 | Forge | 17 | [forge-1.19.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4/xaero-world-map-earth-forge-1.19.2-0.1.4.jar) |
+| 1.20.1 | Forge | 17 | [forge-1.20.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4/xaero-world-map-earth-forge-1.20.1-0.1.4.jar) |
+| 1.20.1 | Fabric | 17 | [fabric-1.20.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4/xaero-world-map-earth-fabric-1.20.1-0.1.4.jar) |
+| 1.21.1 | Fabric | 21 | [fabric-1.21.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4/xaero-world-map-earth-fabric-1.21.1-0.1.4.jar) |
+| 1.21.1 | NeoForge | 21 | [neoforge-1.21.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4/xaero-world-map-earth-neoforge-1.21.1-0.1.4.jar) |
+| 26.1.2 | Fabric | 25 | [fabric-26.1.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4/xaero-world-map-earth-fabric-26.1.2-0.1.4.jar) |
+| 26.1.2 | NeoForge | 25 | [neoforge-26.1.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4/xaero-world-map-earth-neoforge-26.1.2-0.1.4.jar) |
+| 26.2 | NeoForge | 25 | [neoforge-26.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4/xaero-world-map-earth-neoforge-26.2-0.1.4.jar) |
+| 26.2 | Fabric | 25 | [fabric-26.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4/xaero-world-map-earth-fabric-26.2-0.1.4.jar) |
 
 ## Features
 
