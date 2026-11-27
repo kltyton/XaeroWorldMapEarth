@@ -2,6 +2,7 @@ package io.github.kltyton.xaeroearth.forge;
 
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.fml.IExtensionPoint;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.config.ModConfig;
@@ -10,6 +11,10 @@ import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 @Mod("xaeroearth")
 public final class EarthMod {
     public EarthMod() {
+        ModLoadingContext.get().registerExtensionPoint(
+                IExtensionPoint.DisplayTest.class,
+                IExtensionPoint.DisplayTest.IGNORE_SERVER_VERSION
+        );
         if (FMLEnvironment.dist == Dist.CLIENT) Client.initialize();
     }
 

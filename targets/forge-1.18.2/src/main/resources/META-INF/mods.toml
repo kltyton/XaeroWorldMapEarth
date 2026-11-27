@@ -10,4 +10,4 @@ description="Native 3D terrain views and an Ore-style interface for Xaero's Worl
 authors="kltyton"
 displayURL="https://github.com/kltyton/XaeroWorldMapEarth"
 logoFile="assets/xaeroearth/branding/icon.png"
-clientRequired=true
+displayTest="IGNORE_SERVER_VERSION"

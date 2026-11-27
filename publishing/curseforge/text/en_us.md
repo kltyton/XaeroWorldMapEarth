@@ -68,7 +68,7 @@ Earth uses Xaero's existing waypoints, world and dimension selection, and cave l
 
 ## Installation
 
-Install the file for your Minecraft version and loader on the client. Install [Xaero's World Map](https://www.curseforge.com/minecraft/mc-mods/xaeros-world-map) and [XaeroLib](https://www.curseforge.com/minecraft/mc-mods/xaerolib), plus [Fabric API](https://www.curseforge.com/minecraft/mc-mods/fabric-api) for Fabric. Version 0.1.4 bundles KltytonUI 1.3.2 and its NeonJS runtime.
+Install the file for your Minecraft version and loader on the client. Install [Xaero's World Map](https://www.curseforge.com/minecraft/mc-mods/xaeros-world-map) and [XaeroLib](https://www.curseforge.com/minecraft/mc-mods/xaerolib), plus [Fabric API](https://www.curseforge.com/minecraft/mc-mods/fabric-api) for Fabric. Version 0.1.4+hotfix bundles KltytonUI 1.3.2.1 and its NeonJS runtime.
 
 | Minecraft | Loaders | Java |
 | --- | --- | --- |

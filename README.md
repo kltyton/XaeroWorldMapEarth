@@ -20,7 +20,7 @@ Download the JAR for your Minecraft version and loader, then place it in your cl
 
 **Optional:** [Xaero's Minimap](https://www.curseforge.com/minecraft/mc-mods/xaeros-minimap) adds entity models to the map, using its radar filters and server permissions.
 
-The 0.1.4 downloads below bundle KltytonUI 1.3.2 and its NeonJS runtime.
+The 0.1.4+hotfix downloads below bundle KltytonUI 1.3.2.1 and its NeonJS runtime.
 
 The current source limits detailed block geometry around the active focus according to zoom and the configured radius. Distant terrain uses Xaero's coarser mapped heights and colors. In surface mode, Earth starts with sections around the heightmap and follows exposed air into deeper sections at cave openings and overhangs. Set `isometricDetailDistance` between 64 and 1536 to change the maximum radius.
 

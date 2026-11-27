@@ -5,12 +5,12 @@ license does not replace the licenses of bundled libraries or external mods.
 
 ## KltytonUI
 
-The current build bundles KltytonUI 1.3.1, maintained by kltyton and based on
+The current build bundles KltytonUI 1.3.2.1, maintained by kltyton and based on
 ApricityUI by Tower of Sighs and its contributors, under LGPL-2.1. The license
 text is in `kui/LGPL-2.1.txt` beside this notice. The matching library source
 and build materials are available at:
 
-https://github.com/kltyton/KltytonUI/tree/a9c4dd56df6c2caa6b877068a5f359e45a96a010
+https://github.com/kltyton/KltytonUI
 
 Upstream: https://github.com/Tower-of-Sighs/AUI
 

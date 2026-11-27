@@ -63,7 +63,7 @@ if (loader == 'fabric') {
     dependencies.add(loader == 'forge' ? 'modImplementation' : 'implementation', kui)
     dependencies {
         jarJar(kui) {
-            version { strictly "[${kui_version}]"; prefer kui_version.toString() }
+            version { strictly "[${kui_version},)"; prefer kui_version.toString() }
         }
     }
 }
