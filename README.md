@@ -39,20 +39,20 @@ TerrainScan.setProfile(4, 24, 10, 5, 28, 36, 1.45, 360);
 
 With a CompanionCall build that provides its map API, the world map shows controllable companions tracked by the client in the current dimension. Click a portrait to select it, Shift-click to change the selection, or Shift-drag on the map to select companions in a rectangle. Click mapped ground to send up to 32 selected companions there. CompanionCall authorizes and moves the companions on the server. The integration applies to the eight shared Minecraft and loader targets. Forge 1.18.2 and 1.19.2 have player navigation only.
 
-### Version 0.1.4
+### Version 0.1.4+hotfix
 
 | Minecraft | Loader | Java | Download |
 | --- | --- | --- | --- |
-| 1.18.2 | Forge | 17 | [forge-1.18.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4/xaero-world-map-earth-forge-1.18.2-0.1.4.jar) |
-| 1.19.2 | Forge | 17 | [forge-1.19.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4/xaero-world-map-earth-forge-1.19.2-0.1.4.jar) |
-| 1.20.1 | Forge | 17 | [forge-1.20.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4/xaero-world-map-earth-forge-1.20.1-0.1.4.jar) |
-| 1.20.1 | Fabric | 17 | [fabric-1.20.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4/xaero-world-map-earth-fabric-1.20.1-0.1.4.jar) |
-| 1.21.1 | Fabric | 21 | [fabric-1.21.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4/xaero-world-map-earth-fabric-1.21.1-0.1.4.jar) |
-| 1.21.1 | NeoForge | 21 | [neoforge-1.21.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4/xaero-world-map-earth-neoforge-1.21.1-0.1.4.jar) |
-| 26.1.2 | Fabric | 25 | [fabric-26.1.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4/xaero-world-map-earth-fabric-26.1.2-0.1.4.jar) |
-| 26.1.2 | NeoForge | 25 | [neoforge-26.1.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4/xaero-world-map-earth-neoforge-26.1.2-0.1.4.jar) |
-| 26.2 | NeoForge | 25 | [neoforge-26.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4/xaero-world-map-earth-neoforge-26.2-0.1.4.jar) |
-| 26.2 | Fabric | 25 | [fabric-26.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4/xaero-world-map-earth-fabric-26.2-0.1.4.jar) |
+| 1.18.2 | Forge | 17 | [forge-1.18.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4%2Bhotfix/xaero-world-map-earth-forge-1.18.2-0.1.4%2Bhotfix.jar) |
+| 1.19.2 | Forge | 17 | [forge-1.19.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4%2Bhotfix/xaero-world-map-earth-forge-1.19.2-0.1.4%2Bhotfix.jar) |
+| 1.20.1 | Forge | 17 | [forge-1.20.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4%2Bhotfix/xaero-world-map-earth-forge-1.20.1-0.1.4%2Bhotfix.jar) |
+| 1.20.1 | Fabric | 17 | [fabric-1.20.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4%2Bhotfix/xaero-world-map-earth-fabric-1.20.1-0.1.4%2Bhotfix.jar) |
+| 1.21.1 | Fabric | 21 | [fabric-1.21.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4%2Bhotfix/xaero-world-map-earth-fabric-1.21.1-0.1.4%2Bhotfix.jar) |
+| 1.21.1 | NeoForge | 21 | [neoforge-1.21.1](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4%2Bhotfix/xaero-world-map-earth-neoforge-1.21.1-0.1.4%2Bhotfix.jar) |
+| 26.1.2 | Fabric | 25 | [fabric-26.1.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4%2Bhotfix/xaero-world-map-earth-fabric-26.1.2-0.1.4%2Bhotfix.jar) |
+| 26.1.2 | NeoForge | 25 | [neoforge-26.1.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4%2Bhotfix/xaero-world-map-earth-neoforge-26.1.2-0.1.4%2Bhotfix.jar) |
+| 26.2 | NeoForge | 25 | [neoforge-26.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4%2Bhotfix/xaero-world-map-earth-neoforge-26.2-0.1.4%2Bhotfix.jar) |
+| 26.2 | Fabric | 25 | [fabric-26.2](https://github.com/kltyton/XaeroWorldMapEarth/releases/download/v0.1.4%2Bhotfix/xaero-world-map-earth-fabric-26.2-0.1.4%2Bhotfix.jar) |
 
 ## Features
 
